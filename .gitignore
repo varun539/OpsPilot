@@ -1,0 +1,42 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Test, lint and type-check caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# ChromaDB runtime data
+chroma/
+.chroma/
+chroma_db/
+*.chroma*.sqlite3
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Freebuff local metadata
+.freebuff/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/

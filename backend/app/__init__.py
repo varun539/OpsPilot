@@ -1,0 +1,1 @@
+"""OpsPilot FastAPI application package."""
