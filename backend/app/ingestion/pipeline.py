@@ -140,4 +140,3 @@ def _relative_source_path(path: Path, root: Path) -> str:
     except ValueError:
         # File lives outside the knowledge base root; keep attribution honest.
         return path.as_posix()
-
