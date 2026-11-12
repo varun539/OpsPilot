@@ -6,6 +6,7 @@ models defined here:
 
 * :class:`DocumentMetadata` -- the YAML frontmatter of one document, validated.
 * :class:`KnowledgeDocument` -- one complete, cleaned document: metadata plus body.
+* :class:`DocumentChunk` -- one searchable slice of a document, with its metadata.
 
 It also defines the exception hierarchy used by the other modules, so failures
 always carry the path of the offending file and a message a human can act on.
@@ -16,9 +17,16 @@ from __future__ import annotations
 import re
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 # Severity vocabulary agreed for the synthetic knowledge base. Keep this in sync
 # with the documents in data/knowledge_base/ rather than inventing new levels.
@@ -32,6 +40,11 @@ SourceType = Literal["synthetic"]
 # Document IDs are stable citation keys (e.g. "KB-001"); they appear in RAG
 # answers later, so they must follow one predictable shape.
 DOC_ID_PATTERN = r"^KB-\d{3}$"
+
+# Chunk IDs are derived, never authored: the document ID plus a zero-padded,
+# per-document index ("KB-001::chunk::0000"). Keeping the document ID in the
+# chunk ID means a citation can be traced back without a second lookup.
+CHUNK_ID_PATTERN = r"^KB-\d{3}::chunk::\d{4,}$"
 
 _DOC_ID_RE = re.compile(DOC_ID_PATTERN)
 
@@ -196,3 +209,59 @@ class KnowledgeDocument(BaseModel):
     def doc_id(self) -> str:
         """Convenience accessor for the citation key."""
         return self.metadata.doc_id
+
+
+class DocumentChunk(BaseModel):
+    """One searchable, character-based slice of a :class:`KnowledgeDocument`.
+
+    A chunk carries a copy of the document-level metadata needed for retrieval
+    and citation, plus its own stable identity (``chunk_id``) and position. It
+    never invents metadata: optional document fields stay ``None`` when the
+    source document did not define them, and unknown frontmatter keys are kept
+    verbatim in ``extra_metadata``.
+
+    ``text`` is stored exactly as chunked and ``character_count`` is derived
+    from it, so the two cannot disagree. Unicode counts are Python string
+    lengths (code points), consistent with character-based chunking.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_id: str = Field(
+        pattern=CHUNK_ID_PATTERN,
+        description="Deterministic ID, e.g. 'KB-001::chunk::0000'.",
+    )
+    doc_id: str = Field(pattern=DOC_ID_PATTERN, description="Source document ID.")
+    title: str = Field(min_length=1, description="Source document title.")
+    category: str = Field(min_length=1, description="Source document category.")
+    component: str = Field(min_length=1, description="Source document component.")
+    severity: Severity = Field(description="Source document severity.")
+    tags: list[str] = Field(min_length=1, description="Source document tags.")
+    source_type: SourceType = Field(description="Source document provenance marker.")
+    source_path: str = Field(min_length=1, description="Source document path.")
+    chunk_index: int = Field(ge=0, description="Zero-based position within the document.")
+    text: str = Field(min_length=1, description="Chunk text as sliced from the document.")
+    character_count: int = Field(gt=0, description="Length of ``text`` in characters.")
+
+    applies_to: str | None = None
+    last_updated: date | None = None
+    related_documents: list[str] = Field(default_factory=list)
+    extra_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional source frontmatter keys, preserved verbatim.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_derived_fields(self) -> DocumentChunk:
+        """Reject chunks whose identity or counts disagree with their own fields."""
+        if not self.text.strip():
+            raise ValueError("chunk text must not be blank")
+        if self.character_count != len(self.text):
+            raise ValueError(
+                f"character_count {self.character_count} does not match "
+                f"text length {len(self.text)}"
+            )
+        expected_id = f"{self.doc_id}::chunk::{self.chunk_index:04d}"
+        if self.chunk_id != expected_id:
+            raise ValueError(f"chunk_id must be {expected_id!r}, got {self.chunk_id!r}")
+        return self
