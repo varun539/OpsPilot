@@ -101,6 +101,115 @@ def _as_vector(value: Any) -> np.ndarray:
     return np.asarray(array, dtype=np.float64)
 
 
+def collect_filters(
+    filters: Any = None,
+    where: Any = None,
+    *,
+    doc_id: Any = None,
+    category: Any = None,
+    component: Any = None,
+    severity: Any = None,
+    parent_chunk_id: Any = None,
+    title: Any = None,
+    source_path: Any = None,
+    **extra: Any,
+) -> dict[str, Any] | None:
+    collected: dict[str, Any] = {}
+
+    def _add(key: str, value: Any) -> None:
+        if value is None:
+            return
+        if key not in ALLOWED_FILTER_FIELDS:
+            raise QueryValidationError(f"unsupported filter field: {key!r}")
+        collected[key] = value
+
+    if isinstance(filters, dict):
+        for k, v in filters.items():
+            _add(str(k), v)
+    if isinstance(where, dict):
+        for k, v in where.items():
+            key = str(k)
+            if key not in ALLOWED_FILTER_FIELDS:
+                raise QueryValidationError(f"unsupported filter field: {key!r}")
+            if isinstance(v, dict):
+                collected[key] = v
+            else:
+                collected[key] = v
+
+    _add("doc_id", doc_id)
+    _add("category", category)
+    _add("component", component)
+    _add("severity", severity)
+    _add("parent_chunk_id", parent_chunk_id)
+    _add("title", title)
+    _add("source_path", source_path)
+
+    for k, v in extra.items():
+        if v is None:
+            continue
+        if k in ALLOWED_FILTER_FIELDS:
+            _add(k, v)
+
+    if not collected:
+        return None
+    return collected
+
+
+def build_where(collected: dict[str, Any] | None) -> Any:
+    if not collected:
+        return None
+    if len(collected) == 1:
+        key, value = next(iter(collected.items()))
+        return {key: value}
+    return {"$and": [{k: v} for k, v in collected.items()]}
+
+
+def _compare_filter_value(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, dict):
+        # Chroma-style operators.
+        for op, val in expected.items():
+            if op == "$eq":
+                if actual != val:
+                    return False
+            elif op == "$ne":
+                if actual == val:
+                    return False
+            elif op == "$gt":
+                if not (actual is not None and actual > val):
+                    return False
+            elif op == "$gte":
+                if not (actual is not None and actual >= val):
+                    return False
+            elif op == "$lt":
+                if not (actual is not None and actual < val):
+                    return False
+            elif op == "$lte":
+                if not (actual is not None and actual <= val):
+                    return False
+            elif op == "$in":
+                if actual not in (val or []):
+                    return False
+            elif op == "$nin":
+                if actual in (val or []):
+                    return False
+            else:
+                # Unknown operator: fall back to equality on the whole dict.
+                if actual != expected:
+                    return False
+        return True
+    return actual == expected
+
+
+def metadata_matches(metadata: dict[str, Any] | None, collected: dict[str, Any] | None) -> bool:
+    if not collected:
+        return True
+    md = metadata or {}
+    for key, expected in collected.items():
+        if not _compare_filter_value(md.get(key), expected):
+            return False
+    return True
+
+
 @dataclass
 class _FilterSpec:
     filters: dict[str, Any] | None = None
@@ -154,13 +263,7 @@ class SemanticSearchEngine:
                 # Unknown; ignore.
                 pass
 
-        self.store = (
-            store
-            or vector_store
-            or chroma_store
-            or chroma
-            or positional_store
-        )
+        self.store = store or vector_store or chroma_store or chroma or positional_store
         self.model = model or embedding_model or positional_model
         self.encoder = encoder
         self.local_files_only = bool(local_files_only)
@@ -268,9 +371,7 @@ class SemanticSearchEngine:
         if not math.isfinite(norm) or norm == 0.0:
             raise QueryValidationError("query vector is zero-length")
         if abs(norm - 1.0) > self.normalization_tolerance:
-            raise QueryValidationError(
-                f"query vector is not normalized (L2 norm {norm} != 1.0)"
-            )
+            raise QueryValidationError(f"query vector is not normalized (L2 norm {norm} != 1.0)")
         return vec
 
     def _embed_text(self, query: str) -> np.ndarray:
@@ -311,55 +412,21 @@ class SemanticSearchEngine:
         source_path: Any = None,
         **extra: Any,
     ) -> dict[str, Any] | None:
-        collected: dict[str, Any] = {}
-
-        def _add(key: str, value: Any) -> None:
-            if value is None:
-                return
-            if key not in ALLOWED_FILTER_FIELDS:
-                raise QueryValidationError(f"unsupported filter field: {key!r}")
-            collected[key] = value
-
-        if isinstance(filters, dict):
-            for k, v in filters.items():
-                _add(str(k), v)
-        if isinstance(where, dict):
-            for k, v in where.items():
-                key = str(k)
-                if key not in ALLOWED_FILTER_FIELDS:
-                    raise QueryValidationError(f"unsupported filter field: {key!r}")
-                # Support Chroma-style {"field": {"$eq": val}} and other operators.
-                if isinstance(v, dict):
-                    collected[key] = v
-                else:
-                    collected[key] = v
-
-        _add("doc_id", doc_id)
-        _add("category", category)
-        _add("component", component)
-        _add("severity", severity)
-        _add("parent_chunk_id", parent_chunk_id)
-        _add("title", title)
-        _add("source_path", source_path)
-
-        # Extra kwargs that look like filters.
-        for k, v in extra.items():
-            if v is None:
-                continue
-            if k in ALLOWED_FILTER_FIELDS:
-                _add(k, v)
-
-        if not collected:
-            return None
-        return collected
+        return collect_filters(
+            filters=filters,
+            where=where,
+            doc_id=doc_id,
+            category=category,
+            component=component,
+            severity=severity,
+            parent_chunk_id=parent_chunk_id,
+            title=title,
+            source_path=source_path,
+            **extra,
+        )
 
     def _build_where(self, collected: dict[str, Any] | None) -> Any:
-        if not collected:
-            return None
-        if len(collected) == 1:
-            key, value = next(iter(collected.items()))
-            return {key: value}
-        return {"$and": [{k: v} for k, v in collected.items()]}
+        return build_where(collected)
 
     # ------------------------------------------------------------------ #
     # Search
@@ -527,6 +594,7 @@ class SemanticSearchEngine:
                 chunk_text="" if doc_text is None else str(doc_text),
                 cosine_distance=dist,
                 similarity_score=sim,
+                semantic_rank=i + 1,
                 tokenizer_name=str(_g("tokenizer_name", "")),
                 tokenizer_revision=str(_g("tokenizer_revision", "")),
                 token_count=token_count,
