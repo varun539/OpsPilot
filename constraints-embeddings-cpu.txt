@@ -1,0 +1,14 @@
+# CPU-only PyTorch constraint for the embedding stack.
+#
+# Used via `-c constraints-embeddings-cpu.txt` in requirements-embeddings.txt.
+# A constraint does not ask pip to install torch; it restricts which torch
+# version is allowed to satisfy another package's requirement.
+#
+# The `+cpu` local version only exists on the PyTorch CPU wheel index:
+#   python -m pip install "torch==2.15.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+#
+# Default PyPI publishes `2.15.0`, which is *not* an acceptable match for
+# `==2.15.0+cpu` (PEP 440 compares the local version label), so a resolver
+# without the CPU build installed fails loudly instead of silently installing
+# the default CUDA-enabled wheel.
+torch==2.15.0+cpu

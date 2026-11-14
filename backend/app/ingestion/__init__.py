@@ -44,11 +44,21 @@ from .models import (
 )
 from .parser import parse_document, parse_metadata, split_frontmatter
 from .pipeline import DEFAULT_KNOWLEDGE_BASE_DIR, ingest_document, ingest_knowledge_base
+from .token_chunker import (
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_TOKEN_OVERLAP,
+    TokenDocumentChunk,
+    count_tokens,
+    token_chunk_document_chunk,
+    token_chunk_documents,
+)
 
 __all__ = [
     "DEFAULT_CHUNK_OVERLAP",
     "DEFAULT_CHUNK_SIZE",
     "DEFAULT_KNOWLEDGE_BASE_DIR",
+    "DEFAULT_MAX_TOKENS",
+    "DEFAULT_TOKEN_OVERLAP",
     "DocumentChunk",
     "DocumentLoadError",
     "DocumentMetadata",
@@ -61,9 +71,11 @@ __all__ = [
     "MalformedFrontmatterError",
     "MetadataValidationError",
     "MissingFrontmatterError",
+    "TokenDocumentChunk",
     "chunk_document",
     "chunk_documents",
     "clean_document_text",
+    "count_tokens",
     "discover_documents",
     "ingest_document",
     "ingest_knowledge_base",
@@ -71,4 +83,6 @@ __all__ = [
     "parse_document",
     "parse_metadata",
     "split_frontmatter",
+    "token_chunk_document_chunk",
+    "token_chunk_documents",
 ]

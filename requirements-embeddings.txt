@@ -1,0 +1,26 @@
+# Direct dependencies of the token-aware chunking and embedding stage.
+#
+# Install the CPU PyTorch wheel FIRST, from the CPU wheel index:
+#   python -m pip install "torch==2.15.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+#
+# Then, from the repository root:
+#   python -m pip install -r requirements-embeddings.txt
+#
+# torch is deliberately NOT listed as a direct requirement here: a plain
+# `torch` requirement resolves to the default PyPI wheel, which on Linux pulls
+# in the CUDA runtime and can silently replace an existing CPU build. The
+# constraint file below is what keeps that from happening:
+#
+#   * the CPU wheel index supplies the `+cpu` wheel for the direct install;
+#   * `-c constraints-embeddings-cpu.txt` restricts torch to `2.15.0+cpu` while
+#     resolving the dependencies below, so if the CPU build was skipped, pip
+#     cannot satisfy sentence-transformers' `torch>=2.2` with the plain PyPI
+#     `2.15.0` and the install fails instead of quietly installing CUDA torch.
+#
+# Overlap note: token_overlap is measured in content tokens; special tokens
+# are not part of the overlap.
+-c constraints-embeddings-cpu.txt
+
+sentence-transformers==6.3.0
+transformers==5.22.2
+tokenizers==0.23.3
