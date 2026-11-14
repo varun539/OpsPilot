@@ -5,3 +5,4 @@ pyyaml>=6.0
 pytest
 httpx
 ruff
+openai==3.51.0
