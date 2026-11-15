@@ -6,3 +6,5 @@ pytest
 httpx
 ruff
 openai==3.51.0
+langgraph==1.2.22
+langgraph-checkpoint-sqlite==3.1.3
