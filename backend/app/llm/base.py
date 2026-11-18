@@ -43,5 +43,3 @@ class LLMProvider(Protocol):
     ) -> LLMResult:
         """Generate a structured response matching ``output_schema``."""
         ...
-
-

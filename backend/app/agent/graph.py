@@ -1,6 +1,5 @@
 """LangGraph construction for OpsPilot investigations."""
 
-
 from __future__ import annotations
 
 from typing import Any

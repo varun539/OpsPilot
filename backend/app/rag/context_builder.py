@@ -142,4 +142,3 @@ class ContextBuilder:
 def build_context(results: Any, **kwargs: Any) -> "EvidenceContext":
     """Module-level helper for building an :class:`EvidenceContext`."""
     return ContextBuilder(**kwargs).build(results)
-

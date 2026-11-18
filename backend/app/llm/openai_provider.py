@@ -7,7 +7,7 @@ from typing import Any
 import openai
 
 from .base import LLMResult, LLMUsage
-from .config import LLMConfig
+from .config import LLMConfig, bounded_max_output_tokens, bounded_timeout
 from .exceptions import (
     LLMAuthenticationError,
     LLMConfigurationError,
@@ -19,7 +19,13 @@ from .exceptions import (
 
 
 class OpenAIProvider:
-    """OpenAI-backed provider with lazy client initialization."""
+    """OpenAI-backed provider with lazy client initialization.
+
+    Retained for interface compatibility and tests. The production factory no
+    longer selects it, so the live runtime cannot make paid OpenAI calls.
+    """
+
+    provider_name = "openai"
 
     def __init__(
         self,
@@ -38,15 +44,22 @@ class OpenAIProvider:
         if self._client is not None:
             return self._client
         if not self.config.api_key:
-            raise LLMConfigurationError("OPENAI_API_KEY is not configured")
+            raise LLMConfigurationError("provider API key is not configured")
         try:
             self._client = openai.OpenAI(
                 api_key=self.config.api_key,
                 timeout=self.config.timeout,
+                max_retries=0,
             )
         except Exception as exc:
-            raise LLMConfigurationError(f"failed to initialize OpenAI client: {exc}") from exc
+            raise LLMConfigurationError("failed to initialize the OpenAI client") from exc
         return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            close = getattr(self._client, "close", None)
+            if callable(close):
+                close()
 
     def generate_structured(
         self,
@@ -58,9 +71,9 @@ class OpenAIProvider:
         max_output_tokens: int | None = None,
     ) -> LLMResult:
         client = self._ensure_client()
-        request_timeout = self.config.timeout if timeout is None else timeout
-        request_max_tokens = (
-            self.config.max_output_tokens if max_output_tokens is None else max_output_tokens
+        request_timeout = bounded_timeout(self.config, timeout)
+        request_max_tokens = bounded_max_output_tokens(
+            self.config, max_output_tokens
         )
 
         try:
@@ -72,17 +85,23 @@ class OpenAIProvider:
                 max_output_tokens=request_max_tokens,
                 timeout=request_timeout,
             )
+        # Provider errors can echo request details (including a partially
+        # masked API key), and these messages are persisted in reports and
+        # returned by the API. Keep client-visible text generic; the original
+        # exception remains chained for server-side debugging.
         except openai.APITimeoutError as exc:
-            raise LLMTimeoutError(f"OpenAI request timed out: {exc}") from exc
+            raise LLMTimeoutError("OpenAI request timed out") from exc
         except openai.AuthenticationError as exc:
-            raise LLMAuthenticationError(f"OpenAI authentication failed: {exc}") from exc
+            raise LLMAuthenticationError("OpenAI authentication failed") from exc
         except openai.OpenAIError as exc:
             refusal_error = getattr(openai, "RefusalError", None)
             if refusal_error is not None and isinstance(exc, refusal_error):
-                raise LLMRefusalError(f"OpenAI refused the request: {exc}") from exc
+                raise LLMRefusalError("OpenAI refused the request") from exc
             if isinstance(exc, openai.APIStatusError):
-                raise LLMResponseError(f"OpenAI API error: {exc}") from exc
-            raise LLMResponseError(f"OpenAI request failed: {exc}") from exc
+                status_code = getattr(exc, "status_code", None)
+                suffix = f" (status {status_code})" if status_code else ""
+                raise LLMResponseError(f"OpenAI API request failed{suffix}") from exc
+            raise LLMResponseError("OpenAI request failed") from exc
 
         status = getattr(response, "status", None)
         if status not in (None, "completed"):
@@ -122,6 +141,7 @@ class OpenAIProvider:
             model=getattr(response, "model", self.config.model),
             usage=usage,
             raw_response=response,
+            metadata={"provider": self.provider_name},
         )
 
 

@@ -1,6 +1,5 @@
 """Node implementations for the OpsPilot investigation graph."""
 
-
 from __future__ import annotations
 
 import dataclasses
@@ -528,7 +527,9 @@ def _build_rag_response(
         ]
     usage = None
     model = ""
+    provider = ""
     if llm_result is not None:
+        provider = str((getattr(llm_result, "metadata", None) or {}).get("provider", ""))
         usage_raw = getattr(llm_result, "usage", None)
         if usage_raw is not None:
             usage = {}
@@ -543,7 +544,7 @@ def _build_rag_response(
         retrieved_evidence=retrieved,
         source_references=refs,
         retrieval_metadata={"retrieved_count": len(retrieved)},
-        provider="OpenAIProvider" if llm_result is not None else "",
+        provider=provider,
         model=model,
         usage=usage,
         generation_status=status,
@@ -585,19 +586,13 @@ def human_review(state: dict[str, Any], **_: Any) -> dict[str, Any]:
         "incident_summary": report_obj.get("summary", "") if isinstance(report_obj, dict) else "",
         "evidence_status": state.get("evidence_status", "unknown"),
         "hypotheses": (
-            report_obj.get("root_cause_hypotheses", [])
-            if isinstance(report_obj, dict)
-            else []
+            report_obj.get("root_cause_hypotheses", []) if isinstance(report_obj, dict) else []
         ),
         "recommended_actions": (
-            report_obj.get("recommended_actions", [])
-            if isinstance(report_obj, dict)
-            else []
+            report_obj.get("recommended_actions", []) if isinstance(report_obj, dict) else []
         ),
         "supporting_evidence": (
-            report_obj.get("supporting_evidence", [])
-            if isinstance(report_obj, dict)
-            else []
+            report_obj.get("supporting_evidence", []) if isinstance(report_obj, dict) else []
         ),
         "limitations": report_obj.get("limitations", []) if isinstance(report_obj, dict) else [],
         "approval_choices": ["approved", "rejected"],

@@ -1,6 +1,7 @@
 # RAG Setup
 
-OpsPilot's Phase 5 RAG pipeline combines hybrid retrieval with an OpenAI structured generation provider.
+OpsPilot's RAG pipeline combines hybrid retrieval with one explicitly selected
+zero-cost LLM provider (Gemini, Groq or OpenRouter).
 
 ## Architecture
 
@@ -8,7 +9,7 @@ OpsPilot's Phase 5 RAG pipeline combines hybrid retrieval with an OpenAI structu
 Incident question
   -> HybridSearchEngine
   -> ContextBuilder
-  -> OpenAIProvider
+  -> create_llm_provider()
   -> InvestigationReport
   -> CitationValidator
   -> RAGResponse
@@ -20,30 +21,39 @@ Incident question
 python -m pip install -r requirements.txt
 ```
 
-The OpenAI SDK is pinned to `openai==3.51.0` for compatibility with Python 3.14.
+The OpenAI SDK is pinned to `openai==3.51.0` for the Groq/OpenRouter
+Chat Completions adapters and the retained OpenAI test adapter.
 
 ## Configuration
 
-Set these environment variables:
+Set these server-side environment variables:
 
 ```bash
-export OPENAI_API_KEY="..."
-export OPSPILOT_LLM_MODEL="gpt-6-astra"
+export OPSPILOT_LLM_PROVIDER="gemini"       # gemini | groq | openrouter
+export OPSPILOT_LLM_MODEL="gemini-3.5-flash" # free-tier model for your account
+export GEMINI_API_KEY="..."
 export OPSPILOT_LLM_TIMEOUT="30"
-export OPSPILOT_LLM_MAX_OUTPUT_TOKENS="2000"
+export OPSPILOT_LLM_MAX_OUTPUT_TOKENS="1200"
 ```
 
-The default model is `gpt-6-astra` and can be overridden with `OPSPILOT_LLM_MODEL`.
+`OPSPILOT_LLM_MODEL` has no default: choose a model your account offers on a
+zero-cost quota. For Groq use `GROQ_API_KEY`; for OpenRouter use
+`OPENROUTER_API_KEY` and a model ID ending in `:free`. `OPSPILOT_LLM_API_KEY`
+is a provider-neutral alternative to the three key variables.
+`OPENAI_API_KEY` is ignored and OpenAI is not selectable in the production
+factory.
 
 ## Running an investigation
 
 ```python
-from backend.app.llm.openai_provider import OpenAIProvider
+from backend.app.llm.config import LLMConfig
+from backend.app.llm.factory import create_llm_provider
 from backend.app.rag.generator import RAGService
 from backend.app.retrieval.hybrid_search import HybridSearchEngine
 
 engine = HybridSearchEngine()
-provider = OpenAIProvider()  # reads OPENAI_API_KEY from the environment
+config = LLMConfig.from_env()
+provider = create_llm_provider(config)
 service = RAGService(retrieval_engine=engine, llm_provider=provider)
 response = service.investigate("API returns 500 after deployment")
 ```
@@ -74,10 +84,16 @@ If no evidence is retrieved, OpsPilot returns an insufficient-evidence report wi
 
 ## Testing without an API key
 
-All standard tests run offline using fake providers and mocked OpenAI clients. No live API requests are made during the test suite.
+All standard tests run offline using fake providers and mocked HTTP/SDK
+clients. No live API requests are made during the test suite. A real smoke
+test exists only behind `OPSPILOT_LIVE_LLM_TESTS=1` and a configured free-tier
+key.
 
 ## Security and cost
 
-- API keys are never logged or committed.
+- API keys are never logged or committed, and `OPENAI_API_KEY` is not read.
+- OpenRouter model IDs must end in `:free`; there is no paid fallback.
 - Retrieved documents and user input are treated as untrusted data.
 - Recommended actions require human review and are not executed automatically.
+- Free-tier providers may log or review prompts. Use synthetic incident data
+  only; see `docs/ai-runtime.md` for the full data-handling list.

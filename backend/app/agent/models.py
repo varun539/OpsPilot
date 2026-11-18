@@ -1,6 +1,5 @@
 """Validated models for the OpsPilot agent."""
 
-
 from __future__ import annotations
 
 from typing import Any

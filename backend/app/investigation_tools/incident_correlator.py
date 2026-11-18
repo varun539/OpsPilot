@@ -107,17 +107,13 @@ def _normalize_event(raw: Any, index: int) -> dict[str, Any]:
         "component": _string_or_none(_get_field(raw, "component", "service", "logger")),
         "message": _string_or_none(message),
         "correlation_id": _string_or_none(
-            _get_field(
-                raw, "correlation_id", "request_id", "trace_id", "req_id"
-            )
+            _get_field(raw, "correlation_id", "request_id", "trace_id", "req_id")
         ),
         "signature": _string_or_none(_get_field(raw, "signature", "error_signature"))
         or _signature(message),
         "dependencies": [
             str(dep)
-            for dep in _as_list(
-                _get_field(raw, "dependencies", "dependency", "related_services")
-            )
+            for dep in _as_list(_get_field(raw, "dependencies", "dependency", "related_services"))
         ],
         "finding_refs": sorted(set(finding_refs)),
     }
@@ -177,9 +173,7 @@ def _build_group(
     return CorrelationGroup(
         group_id=_group_id(reason_key, event_ids),
         event_ids=event_ids,
-        finding_ids=sorted(
-            {ref for member in members for ref in member["finding_refs"]}
-        ),
+        finding_ids=sorted({ref for member in members for ref in member["finding_refs"]}),
         shared_evidence=shared_evidence,
         timeline=_timeline(members),
         possible_dependency_relationships=dependency_notes or [],
@@ -228,9 +222,7 @@ def correlate_incidents(events: Any, **options: Any) -> CorrelationResult:
         event = _normalize_event(raw, index)
         if event["id"] in seen_ids:
             unique_id = f"{event['id']}#{index + 1}"
-            warnings.append(
-                f"Duplicate event id {event['id']!r} renamed to {unique_id!r}."
-            )
+            warnings.append(f"Duplicate event id {event['id']!r} renamed to {unique_id!r}.")
             event["id"] = unique_id
         seen_ids.add(event["id"])
         normalized.append(event)
@@ -292,9 +284,7 @@ def correlate_incidents(events: Any, **options: Any) -> CorrelationResult:
                     "Identical messages may be produced by unrelated code paths.",
                 ],
                 dependency_notes=(
-                    [f"Signature observed in: {', '.join(components)}"]
-                    if components
-                    else []
+                    [f"Signature observed in: {', '.join(components)}"] if components else []
                 ),
                 metadata={"signature": signature},
             )
@@ -343,9 +333,7 @@ def correlate_incidents(events: Any, **options: Any) -> CorrelationResult:
                 limitations=[
                     "A common dependency is a lead to investigate, not proof of a shared fault.",
                 ],
-                dependency_notes=[
-                    "Possible common dependency: " + ", ".join(shared)
-                ]
+                dependency_notes=["Possible common dependency: " + ", ".join(shared)]
                 if shared
                 else [],
                 metadata={
@@ -437,9 +425,7 @@ def correlate_incidents(events: Any, **options: Any) -> CorrelationResult:
                 group_id=_group_id("finding_only", [finding_id]),
                 event_ids=[],
                 finding_ids=[finding_id],
-                shared_evidence=[
-                    "supplied diagnostic finding without event linkage"
-                ],
+                shared_evidence=["supplied diagnostic finding without event linkage"],
                 timeline=[],
                 possible_dependency_relationships=[],
                 alternative_explanations=[
@@ -448,21 +434,16 @@ def correlate_incidents(events: Any, **options: Any) -> CorrelationResult:
                 ],
                 limitations=[
                     _CAUSATION_LIMITATION,
-                    "Listed alone only because it was supplied; no correlation evidence "
-                    "exists.",
+                    "Listed alone only because it was supplied; no correlation evidence exists.",
                 ],
-                correlation_reason=(
-                    "Diagnostic finding supplied without associated events."
-                ),
+                correlation_reason=("Diagnostic finding supplied without associated events."),
                 metadata={"unattached": True},
             )
         )
 
     if redact:
         for group in groups:
-            group.shared_evidence = [
-                redact_text(evidence) for evidence in group.shared_evidence
-            ]
+            group.shared_evidence = [redact_text(evidence) for evidence in group.shared_evidence]
             for item in group.timeline:
                 if isinstance(item, dict) and item.get("message") is not None:
                     item["message"] = redact_text(str(item["message"]))

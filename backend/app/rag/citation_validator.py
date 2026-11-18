@@ -70,4 +70,3 @@ class CitationValidator:
         if isinstance(item, dict):
             return str(item.get("chunk_id", "") or "")
         return str(getattr(item, "chunk_id", "") or "")
-

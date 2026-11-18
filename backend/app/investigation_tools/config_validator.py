@@ -177,8 +177,7 @@ def validate_configuration(config: Any, **options: Any) -> DiagnosticResult:
     normalized_rules = _normalize_rules(rules, required_fields)
     if max_fields > 0 and len(normalized_rules) > max_fields:
         warnings.append(
-            f"Validation rules truncated to {max_fields} field(s) "
-            f"(of {len(normalized_rules)})."
+            f"Validation rules truncated to {max_fields} field(s) (of {len(normalized_rules)})."
         )
         normalized_rules = normalized_rules[:max_fields]
 
@@ -350,8 +349,7 @@ def validate_configuration(config: Any, **options: Any) -> DiagnosticResult:
                             code="CONFIG_VALUE_BELOW_MIN",
                             title=f"Value below minimum for {field_name}",
                             description=(
-                                f"Field '{field_name}' value {value} "
-                                f"is below minimum {min_val}."
+                                f"Field '{field_name}' value {value} is below minimum {min_val}."
                             ),
                             severity=Severity.medium,
                             evidence=[f"field={field_name} value={value} min={min_val}"],
@@ -369,8 +367,7 @@ def validate_configuration(config: Any, **options: Any) -> DiagnosticResult:
                             code="CONFIG_VALUE_ABOVE_MAX",
                             title=f"Value above maximum for {field_name}",
                             description=(
-                                f"Field '{field_name}' value {value} "
-                                f"is above maximum {max_val}."
+                                f"Field '{field_name}' value {value} is above maximum {max_val}."
                             ),
                             severity=Severity.medium,
                             evidence=[f"field={field_name} value={value} max={max_val}"],
@@ -393,8 +390,7 @@ def validate_configuration(config: Any, **options: Any) -> DiagnosticResult:
                         code="CONFIG_VALUE_TOO_SHORT",
                         title=f"Value too short for {field_name}",
                         description=(
-                            f"Field '{field_name}' length {len(value)} "
-                            f"is below minimum {min_len}."
+                            f"Field '{field_name}' length {len(value)} is below minimum {min_len}."
                         ),
                         severity=Severity.medium,
                         evidence=[f"field={field_name}"],
@@ -410,8 +406,7 @@ def validate_configuration(config: Any, **options: Any) -> DiagnosticResult:
                         code="CONFIG_VALUE_TOO_LONG",
                         title=f"Value too long for {field_name}",
                         description=(
-                            f"Field '{field_name}' length {len(value)} "
-                            f"exceeds maximum {max_len}."
+                            f"Field '{field_name}' length {len(value)} exceeds maximum {max_len}."
                         ),
                         severity=Severity.medium,
                         evidence=[f"field={field_name}"],
@@ -459,11 +454,9 @@ def validate_configuration(config: Any, **options: Any) -> DiagnosticResult:
                         )
                     )
             except re.error:
-                warnings.append(
-                    f"Invalid regex pattern for field {field_name}."
-                )
-     # Check for unknown extra fields? Not required.
-     # Redact sensitive values in findings evidence.
+                warnings.append(f"Invalid regex pattern for field {field_name}.")
+    # Check for unknown extra fields? Not required.
+    # Redact sensitive values in findings evidence.
     if redact:
         for f in findings:
             f.evidence = [redact_text(str(e)) for e in f.evidence]
@@ -497,7 +490,8 @@ def validate_configuration(config: Any, **options: Any) -> DiagnosticResult:
         warnings=warnings,
         metadata=metadata,
         observed_facts=[f"{len(config)} configuration fields provided."],
-        detected_patterns=[f.code for f in findings],        potential_explanations=(
+        detected_patterns=[f.code for f in findings],
+        potential_explanations=(
             ["Configuration issues may cause startup or runtime failures."] if issues else []
         ),
         recommended_next_steps=(

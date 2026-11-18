@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,8 @@ from typing import Any
 import chromadb
 import numpy as np
 
-DEFAULT_COLLECTION_NAME = "opspilot_embeddings"
+from .constants import DEFAULT_COLLECTION_NAME
+
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_NORMALIZATION_TOLERANCE = 1e-5
 
@@ -35,6 +37,11 @@ def _repo_root() -> Path:
 
 
 def _default_persist_directory() -> Path:
+    # Container deployments point this at a persistent volume; local runs fall
+    # back to the repository-local ``chroma/`` directory.
+    configured = os.getenv("OPSPILOT_CHROMA_DIR", "").strip()
+    if configured:
+        return Path(configured)
     return _repo_root() / "chroma"
 
 
@@ -107,9 +114,7 @@ def _token_chunk_map(token_chunks: Sequence[Any] | None) -> dict[str, Any]:
 
 
 def _metadata_from(embedded: Any, token_chunk: Any | None) -> dict[str, Any]:
-    token_id = str(
-        getattr(embedded, "token_chunk_id", getattr(embedded, "chunk_id", ""))
-    )
+    token_id = str(getattr(embedded, "token_chunk_id", getattr(embedded, "chunk_id", "")))
     metadata: dict[str, Any] = {
         "token_chunk_id": token_id,
         "parent_chunk_id": str(getattr(embedded, "parent_chunk_id", "")),
@@ -118,9 +123,7 @@ def _metadata_from(embedded: Any, token_chunk: Any | None) -> dict[str, Any]:
 
     if token_chunk is None:
         return {
-            k: v
-            for k, v in metadata.items()
-            if v not in (None, "") or k in ("token_chunk_id",)
+            k: v for k, v in metadata.items() if v not in (None, "") or k in ("token_chunk_id",)
         }
 
     # Fields copied directly when present.
@@ -389,6 +392,7 @@ class ChromaVectorStore:
 
     def __exit__(self, *exc: Any) -> None:
         self.close()
+
 
 # Alias kept for callers that use the shorter name.
 ChromaStore = ChromaVectorStore

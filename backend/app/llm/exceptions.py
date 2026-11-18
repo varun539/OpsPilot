@@ -17,6 +17,10 @@ class LLMAuthenticationError(LLMError):
     """Raised when provider authentication fails."""
 
 
+class LLMRateLimitError(LLMError):
+    """Raised when a provider rate limit or free-tier quota is exhausted."""
+
+
 class LLMRefusalError(LLMError):
     """Raised when the provider refuses to produce output."""
 

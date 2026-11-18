@@ -1,6 +1,5 @@
 """Checkpoint helpers for OpsPilot LangGraph investigations."""
 
-
 from __future__ import annotations
 
 import os

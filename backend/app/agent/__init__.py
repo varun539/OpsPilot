@@ -1,6 +1,5 @@
 """OpsPilot LangGraph agent package."""
 
-
 from backend.app.agent.agent import OpsPilotAgent
 from backend.app.agent.checkpointer import (
     SQLiteCheckpointer,

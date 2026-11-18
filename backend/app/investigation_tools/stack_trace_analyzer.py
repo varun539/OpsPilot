@@ -164,9 +164,7 @@ def analyze_stack_trace(trace_text: str, **options: Any) -> DiagnosticResult:
 
     if len(text) > max_input_chars:
         if not allow_truncate:
-            raise InputSizeError(
-                f"input exceeds max_input_chars ({len(text)} > {max_input_chars})"
-            )
+            raise InputSizeError(f"input exceeds max_input_chars ({len(text)} > {max_input_chars})")
         text, _ = truncate_text(text, max_input_chars)
         warnings.append(f"Input truncated to {max_input_chars} characters.")
 
@@ -265,9 +263,7 @@ def analyze_stack_trace(trace_text: str, **options: Any) -> DiagnosticResult:
                 ],
                 source=TOOL_NAME,
                 remediation_suggestions=["Start the investigation at this location."],
-                observed_facts=[
-                    f"Deepest frame: {failure_frame['file']}:{failure_frame['line']}."
-                ],
+                observed_facts=[f"Deepest frame: {failure_frame['file']}:{failure_frame['line']}."],
                 recommended_next_steps=[
                     "Treat upstream frames as the call path, not separate defects.",
                 ],
@@ -280,14 +276,11 @@ def analyze_stack_trace(trace_text: str, **options: Any) -> DiagnosticResult:
                 code="STACKTRACE_INCOMPLETE",
                 title="Incomplete stack trace",
                 description=(
-                    "A traceback was found but no terminating exception line could be "
-                    "identified."
+                    "A traceback was found but no terminating exception line could be identified."
                 ),
                 severity=Severity.medium,
                 evidence=[
-                    (redact_text(line) if redact else line)
-                    for line in lines[:5]
-                    if line.strip()
+                    (redact_text(line) if redact else line) for line in lines[:5] if line.strip()
                 ],
                 source=TOOL_NAME,
                 remediation_suggestions=[
@@ -327,8 +320,7 @@ def analyze_stack_trace(trace_text: str, **options: Any) -> DiagnosticResult:
                 description="Traceback sections are linked by exception chaining.",
                 severity=Severity.informational,
                 evidence=[
-                    f"{section['chain']}: {section['exception_type']}"
-                    for section in chained
+                    f"{section['chain']}: {section['exception_type']}" for section in chained
                 ],
                 source=TOOL_NAME,
                 remediation_suggestions=[
@@ -340,9 +332,7 @@ def analyze_stack_trace(trace_text: str, **options: Any) -> DiagnosticResult:
         )
 
     status = "issues_found" if final is not None else "parsed"
-    summary = (
-        f"Analyzed {len(sections)} traceback section(s) with {len(frames)} frame(s)."
-    )
+    summary = f"Analyzed {len(sections)} traceback section(s) with {len(frames)} frame(s)."
     if final is not None:
         summary += f" Final exception: {final['exception_type']}."
 
@@ -365,9 +355,7 @@ def analyze_stack_trace(trace_text: str, **options: Any) -> DiagnosticResult:
     if final is not None:
         observed_facts.append(f"Final exception type: {final['exception_type']}.")
     if frames:
-        observed_facts.append(
-            f"{len(frames)} stack frame(s) across {len(sections)} section(s)."
-        )
+        observed_facts.append(f"{len(frames)} stack frame(s) across {len(sections)} section(s).")
 
     return DiagnosticResult(
         tool_name=TOOL_NAME,

@@ -187,9 +187,12 @@ def test_authentication_handling():
             )
         ),
     )
-    with pytest.raises(LLMAuthenticationError):
+    with pytest.raises(LLMAuthenticationError) as excinfo:
         provider.generate_structured(
             system_instructions="s",
             user_input="u",
             output_schema=InvestigationReport,
         )
+    # Provider text can echo request credentials; it must not reach clients.
+    assert "bad key" not in str(excinfo.value)
+    assert "sk-" not in str(excinfo.value)

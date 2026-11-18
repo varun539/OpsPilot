@@ -98,7 +98,7 @@ class RAGService:
                     "retrieved_count": 0,
                     "context_truncated": context.truncated,
                 },
-                provider=type(self.llm_provider).__name__,
+                provider=self._provider_name(),
                 model=getattr(self.llm_provider, "model", ""),
                 usage=None,
                 generation_status="insufficient_evidence",
@@ -171,7 +171,7 @@ class RAGService:
                     "retrieved_count": len(evidence_items),
                     "context_truncated": context.truncated,
                 },
-                provider=type(self.llm_provider).__name__,
+                provider=self._provider_name(),
                 model=getattr(llm_result, "model", getattr(self.llm_provider, "model", "")),
                 usage=self._usage_to_dict(getattr(llm_result, "usage", None)),
                 generation_status="citation_validation_failed",
@@ -191,13 +191,22 @@ class RAGService:
                 "retrieved_count": len(evidence_items),
                 "context_truncated": context.truncated,
             },
-            provider=type(self.llm_provider).__name__,
+            provider=self._provider_name(),
             model=getattr(llm_result, "model", getattr(self.llm_provider, "model", "")),
             usage=self._usage_to_dict(getattr(llm_result, "usage", None)),
             generation_status="success",
             valid=True,
             citation_valid=True,
             validation_errors=[],
+        )
+
+    def _provider_name(self) -> str:
+        return str(
+            getattr(
+                self.llm_provider,
+                "provider_name",
+                type(self.llm_provider).__name__,
+            )
         )
 
     @staticmethod
@@ -241,7 +250,7 @@ class RAGService:
                 for item in (evidence or [])
             ],
             retrieval_metadata=metadata or {},
-            provider=type(self.llm_provider).__name__,
+            provider=self._provider_name(),
             model=getattr(self.llm_provider, "model", ""),
             usage=None,
             generation_status=status,
@@ -294,7 +303,7 @@ class RAGService:
                     "filters": filters,
                     "top_k": top_k,
                 },
-                provider=type(self.llm_provider).__name__,
+                provider=self._provider_name(),
                 model=getattr(self.llm_provider, "model", ""),
                 usage=None,
                 generation_status="insufficient_evidence",
@@ -305,14 +314,10 @@ class RAGService:
 
         if not evidence_items:
             # Keep diagnostic findings without fabricating knowledge citations.
-            report = self._insufficient_report(
-                "No relevant knowledge-base evidence was retrieved."
-            )
+            report = self._insufficient_report("No relevant knowledge-base evidence was retrieved.")
             # Preserve diagnostic recommendations in missing information.
             if diagnostic_text:
-                report.missing_information = [
-                    "Relevant knowledge-base evidence for this incident."
-                ]
+                report.missing_information = ["Relevant knowledge-base evidence for this incident."]
             return RAGResponse(
                 question=question,
                 report=report,
@@ -323,7 +328,7 @@ class RAGService:
                     "filters": filters,
                     "top_k": top_k,
                 },
-                provider=type(self.llm_provider).__name__,
+                provider=self._provider_name(),
                 model=getattr(self.llm_provider, "model", ""),
                 usage=None,
                 generation_status="insufficient_evidence",
@@ -401,7 +406,7 @@ class RAGService:
                     "top_k": top_k,
                     "context_truncated": context.truncated,
                 },
-                provider=type(self.llm_provider).__name__,
+                provider=self._provider_name(),
                 model=getattr(llm_result, "model", getattr(self.llm_provider, "model", "")),
                 usage=self._usage_to_dict(getattr(llm_result, "usage", None)),
                 generation_status="citation_validation_failed",
@@ -421,7 +426,7 @@ class RAGService:
                 "top_k": top_k,
                 "context_truncated": context.truncated,
             },
-            provider=type(self.llm_provider).__name__,
+            provider=self._provider_name(),
             model=getattr(llm_result, "model", getattr(self.llm_provider, "model", "")),
             usage=self._usage_to_dict(getattr(llm_result, "usage", None)),
             generation_status="success",
@@ -506,4 +511,3 @@ class RAGService:
             if value is not None:
                 result[field_name] = value
         return result or None
-

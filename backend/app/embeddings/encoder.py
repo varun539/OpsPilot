@@ -181,14 +181,11 @@ class EmbeddingEncoder:
                 )
             norm = float(np.linalg.norm(vec))
             if norm == 0.0 or not math.isfinite(norm):
-                raise EmbeddingValidationError(
-                    f"embedding for {token_chunk_id} is zero-length"
-                )
+                raise EmbeddingValidationError(f"embedding for {token_chunk_id} is zero-length")
             if self.normalize_embeddings:
                 if abs(norm - 1.0) > self.tolerance:
                     raise EmbeddingValidationError(
-                        f"embedding for {token_chunk_id} is not normalized "
-                        f"(L2 norm {norm} != 1.0)"
+                        f"embedding for {token_chunk_id} is not normalized (L2 norm {norm} != 1.0)"
                     )
             # Store as float32 by default (documented suitable dtype).
             stored = np.asarray(vector, dtype=np.float32)

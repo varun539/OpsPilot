@@ -50,10 +50,11 @@ _PATTERNS: list[dict[str, Any]] = [
         "code": "DB_DNS_RESOLUTION_FAILURE",
         "title": "DNS resolution failure",
         "severity": Severity.high,
-        "regex": re.compile(             (
-                 r"name or service not known|could not translate host name|"
-                 r"temporary failure in name resolution|dns"
-             ),
+        "regex": re.compile(
+            (
+                r"name or service not known|could not translate host name|"
+                r"temporary failure in name resolution|dns"
+            ),
             re.I,
         ),
         "explanation": "The database hostname could not be resolved to an address.",
@@ -72,10 +73,11 @@ _PATTERNS: list[dict[str, Any]] = [
         "code": "DB_AUTHENTICATION_FAILURE",
         "title": "Database authentication failure",
         "severity": Severity.high,
-        "regex": re.compile(             (
-                 r"password authentication failed|authentication failed|"
-                 r"invalid password|tenant or user not found"
-             ),
+        "regex": re.compile(
+            (
+                r"password authentication failed|authentication failed|"
+                r"invalid password|tenant or user not found"
+            ),
             re.I,
         ),
         "explanation": "The supplied database credentials were rejected.",
@@ -112,10 +114,11 @@ _PATTERNS: list[dict[str, Any]] = [
         "code": "DB_TOO_MANY_CONNECTIONS",
         "title": "Too many database connections",
         "severity": Severity.high,
-        "regex": re.compile(             (
-                 r"too many clients already|remaining connection slots are reserved|"
-                 r"too many connections"
-             ),
+        "regex": re.compile(
+            (
+                r"too many clients already|remaining connection slots are reserved|"
+                r"too many connections"
+            ),
             re.I,
         ),
         "explanation": "The database server has reached its connection limit.",
@@ -237,10 +240,11 @@ _PATTERNS: list[dict[str, Any]] = [
         "code": "DB_INVALID_CONNECTION_STRING",
         "title": "Invalid database connection string",
         "severity": Severity.high,
-        "regex": re.compile(             (
-                 r"could not parse.*url|invalid.*connection string|"
-                 r"sqlalchemy.*argumenterror|could not parse sqlalchemy"
-             ),
+        "regex": re.compile(
+            (
+                r"could not parse.*url|invalid.*connection string|"
+                r"sqlalchemy.*argumenterror|could not parse sqlalchemy"
+            ),
             re.I,
         ),
         "explanation": "The database connection string could not be parsed.",
@@ -259,10 +263,11 @@ _PATTERNS: list[dict[str, Any]] = [
         "code": "DB_PREPARED_STATEMENT_ERROR",
         "title": "Prepared statement error (pooler mismatch)",
         "severity": Severity.medium,
-        "regex": re.compile(             (
-                 r"prepared statement .* does not exist|"
-                 r"cannot insert multiple commands into a prepared statement"
-             ),
+        "regex": re.compile(
+            (
+                r"prepared statement .* does not exist|"
+                r"cannot insert multiple commands into a prepared statement"
+            ),
             re.I,
         ),
         "explanation": "Prepared statements are being used against a transaction-mode pooler.",
@@ -334,10 +339,10 @@ def diagnose_database_error(error_text: str, **options: Any) -> DiagnosticResult
         findings.append(
             DiagnosticFinding(
                 code="DB_UNKNOWN_ERROR",
-                title="Unrecognized database error",                 description=(
-                     "The supplied error text did not match any known database "
-                     "error pattern."
-                 ),
+                title="Unrecognized database error",
+                description=(
+                    "The supplied error text did not match any known database error pattern."
+                ),
                 severity=Severity.medium,
                 evidence=[redact_text(text[:300]) if redact else text[:300]],
                 source=TOOL_NAME,

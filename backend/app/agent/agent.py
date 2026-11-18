@@ -1,6 +1,5 @@
 """High-level service interface for the OpsPilot agent."""
 
-
 from __future__ import annotations
 
 import uuid
@@ -54,6 +53,7 @@ class OpsPilotAgent:
         request: Any,
         *,
         thread_id: str | None = None,
+        investigation_id: str | None = None,
     ) -> dict[str, Any]:
         if isinstance(request, InvestigationRequest):
             req = request
@@ -65,7 +65,7 @@ class OpsPilotAgent:
             {
                 "request": req.model_dump(mode="json"),
                 "thread_id": tid,
-                "investigation_id": f"inv-{uuid.uuid4().hex[:12]}",
+                "investigation_id": investigation_id or f"inv-{uuid.uuid4().hex[:12]}",
             }
         )
         config = {"configurable": {"thread_id": tid}}

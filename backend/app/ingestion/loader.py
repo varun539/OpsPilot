@@ -48,9 +48,7 @@ def discover_documents(directory: Path) -> list[Path]:
         raise KnowledgeBaseError(directory, f"cannot list directory: {exc}") from exc
 
     documents = [
-        entry
-        for entry in entries
-        if entry.is_file() and entry.suffix.lower() in MARKDOWN_SUFFIXES
+        entry for entry in entries if entry.is_file() and entry.suffix.lower() in MARKDOWN_SUFFIXES
     ]
     documents.sort(key=lambda path: path.name)
     return documents

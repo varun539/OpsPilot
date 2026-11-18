@@ -1,0 +1,118 @@
+# OpsPilot single-host deployment.
+#
+#   cp .env.production.example .env.production   # then edit values
+#   docker compose up -d --build
+#
+# This stack intentionally runs exactly one backend instance and one Uvicorn
+# worker. SQLite (application + LangGraph checkpoints) and local ChromaDB are
+# single-writer stores; do not add replicas.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: opspilot-backend:local
+    init: true
+    env_file:
+      # Runtime secrets and environment-specific settings. Not committed.
+      # Absent file is allowed so `docker compose config` can validate the
+      # stack; the application then fails closed at startup as designed.
+      - path: .env.production
+        required: false
+    environment:
+      # Persistent storage layout. Declared here (not in the env file) so the
+      # volume contract cannot silently drift from the Compose volumes below.
+      OPSPILOT_APP_DB: /var/lib/opspilot/app/opspilot_app.sqlite
+      OPSPILOT_CHECKPOINT_DB: /var/lib/opspilot/checkpoints/opspilot_checkpoints.sqlite
+      OPSPILOT_CHROMA_DIR: /var/lib/opspilot/chroma
+      HF_HOME: /var/lib/opspilot/models
+      SENTENCE_TRANSFORMERS_HOME: /var/lib/opspilot/models
+      PYTHONUNBUFFERED: "1"
+    ports:
+      # Loopback-bound for local/single-host use. A future reverse proxy should
+      # reach the backend over the internal network instead of publishing it.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - opspilot-app-data:/var/lib/opspilot/app
+      - opspilot-checkpoint-data:/var/lib/opspilot/checkpoints
+      - opspilot-chroma-data:/var/lib/opspilot/chroma
+      - opspilot-model-cache:/var/lib/opspilot/models
+      - opspilot-backups:/var/lib/opspilot/backups
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # These are compiled into the browser bundle at build time.
+        # Override them in the shell (or a Compose `.env`) before building, or
+        # rebuild the image when they change.
+        NEXT_PUBLIC_OPSPILOT_API_URL: ${NEXT_PUBLIC_OPSPILOT_API_URL:-http://127.0.0.1:8000}
+        NEXT_PUBLIC_OPSPILOT_OIDC_AUTHORITY: ${NEXT_PUBLIC_OPSPILOT_OIDC_AUTHORITY:-}
+        NEXT_PUBLIC_OPSPILOT_OIDC_CLIENT_ID: ${NEXT_PUBLIC_OPSPILOT_OIDC_CLIENT_ID:-}
+        NEXT_PUBLIC_OPSPILOT_OIDC_REDIRECT_URI: ${NEXT_PUBLIC_OPSPILOT_OIDC_REDIRECT_URI:-}
+        NEXT_PUBLIC_OPSPILOT_OIDC_SCOPE: ${NEXT_PUBLIC_OPSPILOT_OIDC_SCOPE:-openid profile email}
+        NEXT_PUBLIC_OPSPILOT_ROLES_CLAIM: ${NEXT_PUBLIC_OPSPILOT_ROLES_CLAIM:-roles}
+        NEXT_PUBLIC_OPSPILOT_DEV_AUTH: ${NEXT_PUBLIC_OPSPILOT_DEV_AUTH:-false}
+    image: opspilot-frontend:local
+    init: true
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  # One volume per data class. Do not nest or reuse these mounts.
+  opspilot-app-data:
+  opspilot-checkpoint-data:
+  opspilot-chroma-data:
+  opspilot-model-cache:
+  opspilot-backups:

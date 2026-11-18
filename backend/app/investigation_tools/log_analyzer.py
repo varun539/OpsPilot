@@ -58,9 +58,7 @@ _HTTP_CONTEXT_RES = (
 )
 _HTTP_CODE_RE = re.compile(r"\b([45]\d{2})\b")
 
-_EXCEPTION_RE = re.compile(
-    r"\b([A-Za-z_][\w.]*(?:Error|Exception|Warning|Fault|Panic))\b"
-)
+_EXCEPTION_RE = re.compile(r"\b([A-Za-z_][\w.]*(?:Error|Exception|Warning|Fault|Panic))\b")
 _CORR_KEYS_RE = re.compile(
     r"(?i)(?:request[_-]?id|requestid|correlation[_-]?id|correlationid|"
     r"trace[_-]?id|traceid|req[_-]?id|reqid|x-request-id)\s*[:=]\s*[\"']?"
@@ -233,9 +231,7 @@ def analyze_logs(log_text: str, **options: Any) -> DiagnosticResult:
 
     if len(text) > max_input_chars:
         if not allow_truncate:
-            raise InputSizeError(
-                f"input exceeds max_input_chars ({len(text)} > {max_input_chars})"
-            )
+            raise InputSizeError(f"input exceeds max_input_chars ({len(text)} > {max_input_chars})")
         text, _ = truncate_text(text, max_input_chars)
         warnings.append(f"Input truncated to {max_input_chars} characters.")
 
@@ -396,17 +392,12 @@ def analyze_logs(log_text: str, **options: Any) -> DiagnosticResult:
                 title="Exception names detected in logs",
                 description="Python exception types referenced in log entries.",
                 severity=Severity.high,
-                evidence=[
-                    f"{name} ({count})"
-                    for name, count in exception_counter.most_common(10)
-                ],
+                evidence=[f"{name} ({count})" for name, count in exception_counter.most_common(10)],
                 source=TOOL_NAME,
                 remediation_suggestions=[
                     "Inspect the stack traces associated with these exceptions."
                 ],
-                observed_facts=[
-                    f"{len(exception_counter)} distinct exception type(s) observed."
-                ],
+                observed_facts=[f"{len(exception_counter)} distinct exception type(s) observed."],
                 detected_patterns=["exception_names_in_logs"],
             )
         )
@@ -433,9 +424,7 @@ def analyze_logs(log_text: str, **options: Any) -> DiagnosticResult:
                 severity=severity,
                 evidence=[f"{code} ({status_counter[code]})" for code in sorted(codes)],
                 source=TOOL_NAME,
-                remediation_suggestions=[
-                    "Inspect the requests that produced these statuses."
-                ],
+                remediation_suggestions=["Inspect the requests that produced these statuses."],
                 observed_facts=[f"{len(codes)} distinct HTTP {label} status code(s)."],
                 detected_patterns=[f"http_{label}_in_logs"],
             )
@@ -452,12 +441,8 @@ def analyze_logs(log_text: str, **options: Any) -> DiagnosticResult:
                 severity=Severity.informational,
                 evidence=sorted(correlation_counter)[:10],
                 source=TOOL_NAME,
-                remediation_suggestions=[
-                    "Use these IDs to correlate events across components."
-                ],
-                observed_facts=[
-                    f"{sum(correlation_counter.values())} total ID occurrence(s)."
-                ],
+                remediation_suggestions=["Use these IDs to correlate events across components."],
+                observed_facts=[f"{sum(correlation_counter.values())} total ID occurrence(s)."],
                 detected_patterns=["correlation_ids_in_logs"],
             )
         )
@@ -486,9 +471,7 @@ def analyze_logs(log_text: str, **options: Any) -> DiagnosticResult:
             "Repeated messages may indicate a persistent underlying failure."
         )
     if status_counter.get(500):
-        potential_explanations.append(
-            "HTTP 500 entries suggest unhandled server-side exceptions."
-        )
+        potential_explanations.append("HTTP 500 entries suggest unhandled server-side exceptions.")
     if status_counter.get(429):
         potential_explanations.append(
             "HTTP 429 entries suggest request throttling or a client retry storm."
@@ -507,9 +490,7 @@ def analyze_logs(log_text: str, **options: Any) -> DiagnosticResult:
         "total_entries": len(entries),
         "logger_names": logger_names,
         "exception_counts": dict(sorted(exception_counter.items())),
-        "http_status_counts": {
-            str(code): count for code, count in sorted(status_counter.items())
-        },
+        "http_status_counts": {str(code): count for code, count in sorted(status_counter.items())},
         "repeated_message_count": len(repeated),
         "correlation_ids": sorted(correlation_counter),
         "earliest_error_timestamp": min(error_times).isoformat() if error_times else None,
