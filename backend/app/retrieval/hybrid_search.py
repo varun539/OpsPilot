@@ -1,6 +1,11 @@
 """Hybrid retrieval: semantic search + BM25, fused with Reciprocal Rank Fusion.
 
 Reranking is optional and is only applied when a real reranker is supplied.
+
+The final window favours document coverage: a single knowledge document can
+often supply many high-scoring chunks, and without a cap those chunks fill the
+whole window so the report never sees other documents that the incident also
+concerns. See ``DEFAULT_MAX_CHUNKS_PER_DOCUMENT``.
 """
 
 from __future__ import annotations
@@ -15,6 +20,11 @@ from .semantic_search import SemanticSearchEngine, collect_filters
 DEFAULT_SEMANTIC_TOP_K = 20
 DEFAULT_BM25_TOP_K = 20
 DEFAULT_RRF_K = 60
+# At most this many chunks per document appear in the final window, so one
+# document cannot occupy every slot. The cap is only enforced when enough
+# distinct documents exist to fill the window; otherwise the plain top-k is
+# returned, so small single-document collections are unaffected.
+DEFAULT_MAX_CHUNKS_PER_DOCUMENT = 2
 
 
 class Reranker(Protocol):
@@ -157,6 +167,7 @@ class HybridSearchEngine:
         rrf_k: int = DEFAULT_RRF_K,
         semantic_top_k: int = DEFAULT_SEMANTIC_TOP_K,
         bm25_top_k: int = DEFAULT_BM25_TOP_K,
+        max_chunks_per_document: int | None = DEFAULT_MAX_CHUNKS_PER_DOCUMENT,
         local_files_only: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -178,6 +189,7 @@ class HybridSearchEngine:
         self.rrf_k = int(rrf_k)
         self.semantic_top_k = int(semantic_top_k)
         self.bm25_top_k = int(bm25_top_k)
+        self.max_chunks_per_document = self._normalize_cap(max_chunks_per_document)
         self.reranker = reranker
 
         # Semantic engine.
@@ -229,6 +241,45 @@ class HybridSearchEngine:
     def _collect(self, **kwargs: Any) -> Any:
         return collect_filters(**kwargs)
 
+    @staticmethod
+    def _normalize_cap(value: int | None) -> int | None:
+        """Return a positive per-document cap, or ``None`` for no cap."""
+        if value is None:
+            return None
+        try:
+            cap = int(value)
+        except (TypeError, ValueError):
+            return None
+        return cap if cap > 0 else None
+
+    @staticmethod
+    def _take_diverse(
+        ordered: Sequence[HybridSearchResult],
+        limit: int,
+        max_per_document: int | None,
+    ) -> list[HybridSearchResult]:
+        """Take up to ``limit`` results in rank order, capped per document.
+
+        The capped pass is only used when it fills the whole window: a store
+        with a single document (or very few) must still return ``limit``
+        chunks, so the plain top-k is the fallback.
+        """
+        if not max_per_document:
+            return list(ordered[:limit])
+        selected: list[HybridSearchResult] = []
+        per_document: dict[str, int] = {}
+        for result in ordered:
+            document = result.doc_id or result.chunk_id
+            if per_document.get(document, 0) >= max_per_document:
+                continue
+            selected.append(result)
+            per_document[document] = per_document.get(document, 0) + 1
+            if len(selected) >= limit:
+                break
+        if len(selected) < limit:
+            return list(ordered[:limit])
+        return selected
+
     # ------------------------------------------------------------------ #
     # Search
     # ------------------------------------------------------------------ #
@@ -243,6 +294,7 @@ class HybridSearchEngine:
         semantic_top_k: int | None = None,
         bm25_top_k: int | None = None,
         rrf_k: int | None = None,
+        max_chunks_per_document: int | None = None,
         rerank: bool = True,
         rerank_top_k: int | None = None,
         filters: Any = None,
@@ -442,10 +494,16 @@ class HybridSearchEngine:
             )
             ordered = reranked + rest
 
-        # Assign final ranks and trim.
-        for i, r in enumerate(ordered, start=1):
+        # Assign final ranks and trim, keeping the window document-diverse.
+        cap = (
+            self.max_chunks_per_document
+            if max_chunks_per_document is None
+            else self._normalize_cap(max_chunks_per_document)
+        )
+        window = self._take_diverse(ordered, tk, cap)
+        for i, r in enumerate(window, start=1):
             r.final_rank = i
-        return ordered[:tk]
+        return window
 
     def _apply_reranker(
         self, query: str, candidates: list[HybridSearchResult]

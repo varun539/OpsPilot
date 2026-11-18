@@ -226,6 +226,83 @@ def test_reranker_integration(tmp_path: Path) -> None:
         store.close()
 
 
+def test_document_diversity_cap(tmp_path: Path) -> None:
+    """One document must not occupy the whole window when others also match."""
+    store, vectors, semantic, bm25, hybrid = _make_engines(tmp_path)
+    try:
+        capped = hybrid.search("chunk text 0", top_k=4, max_chunks_per_document=2)
+        per_doc: dict[str, int] = {}
+        for result in capped:
+            per_doc[result.doc_id] = per_doc.get(result.doc_id, 0) + 1
+        assert len(capped) == 4
+        assert len(per_doc) == 2
+        assert all(count <= 2 for count in per_doc.values())
+        # Rank order and final ranks stay contiguous after selection.
+        scores = [r.rrf_score for r in capped]
+        assert scores == sorted(scores, reverse=True)
+        assert [r.final_rank for r in capped] == list(range(1, len(capped) + 1))
+    finally:
+        store.close()
+
+
+def test_diversity_cap_falls_back_when_window_cannot_fill(tmp_path: Path) -> None:
+    """A single-document store still returns the full plain top-k."""
+    store = ChromaVectorStore(persist_directory=tmp_path / "chroma", expected_dimension=4)
+    try:
+        vectors = _normalized_vectors(4, 4, seed=11)
+        embedded = [
+            EmbeddedChunk(
+                token_chunk_id=f"only-{i}",
+                parent_chunk_id=f"only-parent-{i}",
+                doc_id="doc-only",
+                embedding=vectors[i],
+            )
+            for i in range(4)
+        ]
+        tokens = [
+            SimpleNamespace(
+                token_chunk_id=f"only-{i}",
+                parent_chunk_id=f"only-parent-{i}",
+                parent_chunk_index=i,
+                doc_id="doc-only",
+                title=f"Only {i}",
+                category="configuration",
+                component="api",
+                severity="high",
+                source_type="synthetic",
+                source_path="data/knowledge_base/KB-001.md",
+                tokenizer_name="tok",
+                tokenizer_revision="rev",
+                token_count=10,
+                max_tokens=240,
+                token_overlap=0,
+                source_char_start=i * 100,
+                source_char_end=i * 100 + 50,
+                applies_to="fastapi",
+                last_updated=None,
+                related_documents=[],
+                extra_metadata={},
+                text=f"only chunk {i}",
+            )
+            for i in range(4)
+        ]
+        store.upsert(embedded, token_chunks=tokens)
+        semantic = SemanticSearchEngine(store, model=_MockModel(vectors[0]), expected_dimension=4)
+        bm25 = BM25SearchEngine(store)
+        bm25.build_index()
+        hybrid = HybridSearchEngine(
+            semantic_engine=semantic,
+            bm25_engine=bm25,
+            max_chunks_per_document=2,
+        )
+        results = hybrid.search("only chunk 0", top_k=4)
+        assert len(results) == 4
+        scores = [r.rrf_score for r in results]
+        assert scores == sorted(scores, reverse=True)
+    finally:
+        store.close()
+
+
 def test_hybrid_result_type(tmp_path: Path) -> None:
     store, vectors, semantic, bm25, hybrid = _make_engines(tmp_path)
     try:

@@ -96,7 +96,7 @@ Evaluates semantic, BM25, and hybrid (RRF) retrieval quality. Each strategy is m
 
 ### Modes
 
-- **offline**: Uses fixture store with lexical hashing embeddings. No torch/sentence-transformers required. Reported results: BM25 recall@5=0.969, hybrid recall@5=0.969; empty collection true; metadata filters 9/9 passed.
+- **offline**: Uses fixture store with lexical hashing embeddings. No torch/sentence-transformers required. Reported results: BM25 recall@5=0.969, hybrid recall@5=1.000; empty collection true; metadata filters 9/9 passed.
 - **local**: Uses real sentence-transformer embeddings + temporary ChromaDB. Requires model cached locally.
 
 ### Results (offline mode)
@@ -105,9 +105,9 @@ Evaluates semantic, BM25, and hybrid (RRF) retrieval quality. Each strategy is m
 |---|---|---|---|---|---|---|---|
 | Semantic | 0.906 | 0.938 | 0.333 | 0.213 | 0.844 | 0.848 | 0.865 |
 | BM25 | 0.969 | 0.969 | 0.354 | 0.213 | 1.000 | 0.976 | 0.976 |
-| Hybrid | 0.969 | 0.969 | 0.354 | 0.213 | 0.969 | 0.948 | 0.948 |
+| Hybrid | 0.969 | 1.000 | 0.354 | 0.225 | 0.969 | 0.948 | 0.964 |
 
-- 2 no-evidence queries correctly return empty results
+- 2 no-evidence queries still return approximate-search results; this is reported as an expected false positive rather than hidden
 - Provenance OK rate: 1.0 for all methods
 - Citation available rate: 1.0 for all methods
 - Metadata filter checks passed: 9/9
@@ -153,16 +153,16 @@ Representative incident cases are run through the graph. The agent is evaluated 
 
 ### Results (offline mode, ScriptedCaseRAG provider)
 
-- 17/18 cases pass (pass_rate = 0.944)
+- 18/18 cases pass (pass_rate = 1.0)
 - Tool selection correct in all cases where it was evaluated
 - Allowlist respected, max tools respected
 - Report valid (schema valid) in all cases
 - Category correct in all cases
-- Citation precision = 1.0, but citation recall varies (0.5 in multi-doc case INC-011, expected behavior for scripted provider)
+- Citation precision = 1.0 and citation recall = 1.0
 - Interrupt/resume success: True in all cases
 - Workflow success: True in all cases
 
-The one failure (INC-011) is a citation recall issue in a case with multiple relevant documents - the scripted RAG provider cites only some of the expected documents. This is documented as a known fixture limitation, not a production bug.
+INC-011 previously scored citation recall 0.5. Root cause was in hybrid retrieval, not the scripted provider: RRF ranks chunks, so one document with many chunks filled the top-5 window and the second relevant document (KB-001) never reached the evidence context. Hybrid search now caps how many chunks a single document can contribute to the final window (see `DEFAULT_MAX_CHUNKS_PER_DOCUMENT`); it falls back to the plain top-k when a collection cannot fill the window with distinct documents. No expected labels, thresholds or citation checks were changed.
 
 ---
 
@@ -285,7 +285,7 @@ python -m backend.app.evaluation.cli run --suite all --mode offline ; [ $? -eq 0
 ```bash
 python -m backend.app.evaluation.cli run --suite diagnostics --mode offline  # exits 0
 python -m backend.app.evaluation.cli run --suite retrieval --mode offline    # exits 0
-python -m backend.app.evaluation.cli run --suite agent --mode offline        # exits 0 (17/18 pass)
+python -m backend.app.evaluation.cli run --suite agent --mode offline        # exits 0 (18/18 pass)
 ```
 
 ---
@@ -343,8 +343,8 @@ Cost is recorded only when actual pricing data is explicitly available and relia
 |---|---|
 | Diagnostic pass_rate | 1.0 (19/19) |
 | Retrieval BM25 recall@5 | 0.969 |
-| Retrieval hybrid recall@5 | 0.969 |
-| Agent pass_rate | 0.944 (17/18) |
+| Retrieval hybrid recall@5 | 1.000 |
+| Agent pass_rate | 1.0 (18/18) |
 
 ### Regression Gates
 
