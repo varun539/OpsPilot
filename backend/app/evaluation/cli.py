@@ -137,6 +137,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="OpsPilot Phase 16 evaluation runner.",
     )
+    # Documented commands (README, docs, module docstring) include a ``run``
+    # subcommand. It is accepted here so the documented invocations work; the
+    # bare form without ``run`` stays supported.
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=["run"],
+        default=None,
+        metavar="run",
+        help="Optional compatibility subcommand (documented commands use 'run').",
+    )
     parser.add_argument(
         "--suite",
         choices=["diagnostics", "retrieval", "agent", "reliability", "all"],
