@@ -1,0 +1,40 @@
+# Build context for the frontend image (./frontend).
+# Source, package manifests and the lockfile must remain included.
+
+# Dependencies and local build output
+node_modules/
+.next/
+.next-*/
+out/
+coverage/
+tsconfig.tsbuildinfo
+
+# Test and browser artifacts
+test-results/
+playwright-report/
+blob-report/
+e2e/
+
+# Local environment and secrets
+.env
+.env.*
+.env.example
+
+# Local runtime data (SQLite databases must never enter an image)
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# Local logs and editor noise
+*.log
+logs/
+.DS_Store
+.idea/
+.vscode/
+
+# Container definitions are not part of the runtime image
+Dockerfile
+.dockerignore

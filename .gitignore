@@ -18,6 +18,7 @@ htmlcov/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # ChromaDB runtime data
 chroma/
@@ -36,7 +37,28 @@ chroma_db/
 # Freebuff local metadata
 .freebuff/
 
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/.next/
+frontend/.next-unconfigured/
+frontend/out/
+frontend/coverage/
+
+# Local container backups
+backups/
+
+# Playwright output
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
 # Editor / OS noise
 .DS_Store
 .idea/
 .vscode/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Evaluation reports
+evaluation-results/

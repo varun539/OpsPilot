@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "description": "Small retrieval evaluation set for OpsPilot knowledge base (offline).",
+  "queries": [
+    {
+      "id": "q01",
+      "query": "FastAPI endpoint returns HTTP 500 Internal Server Error after an unhandled exception",
+      "relevant_doc_ids": ["KB-001"]
+    },
+    {
+      "id": "q02",
+      "query": "Missing DATABASE_URL environment variable at application startup",
+      "relevant_doc_ids": ["KB-002"]
+    },
+    {
+      "id": "q03",
+      "query": "Supabase PostgreSQL connection refused due to IPv6 egress",
+      "relevant_doc_ids": ["KB-003"]
+    },
+    {
+      "id": "q04",
+      "query": "JWT signature verification failed and API returns 401 Unauthorized",
+      "relevant_doc_ids": ["KB-004"]
+    },
+    {
+      "id": "q05",
+      "query": "API request timeout 504 Gateway Timeout slow database query",
+      "relevant_doc_ids": ["KB-005"]
+    },
+    {
+      "id": "q06",
+      "query": "HTTP 429 Too Many Requests Retry-After rate limiting",
+      "relevant_doc_ids": ["KB-006"]
+    },
+    {
+      "id": "q07",
+      "query": "Docker container service starts but is unreachable 502 Bad Gateway",
+      "relevant_doc_ids": ["KB-007"]
+    },
+    {
+      "id": "q08",
+      "query": "SQLAlchemy QueuePool connection pool exhausted under load",
+      "relevant_doc_ids": ["KB-008"]
+    },
+    {
+      "id": "q09",
+      "query": "Empty or malformed environment variable causes startup validation failure",
+      "relevant_doc_ids": ["KB-002"]
+    },
+    {
+      "id": "q10",
+      "query": "Database connection leak holds sessions open",
+      "relevant_doc_ids": ["KB-008"]
+    },
+    {
+      "id": "q11",
+      "query": "asyncpg too many connections PostgreSQL",
+      "relevant_doc_ids": ["KB-003", "KB-008"]
+    },
+    {
+      "id": "q12",
+      "query": "FastAPI response_model validation error surfaces as HTTP 500",
+      "relevant_doc_ids": ["KB-001"]
+    },
+    {
+      "id": "q13",
+      "query": "Expired JWT token clock skew nbf claim",
+      "relevant_doc_ids": ["KB-004"]
+    },
+    {
+      "id": "q14",
+      "query": "Rate limiting key collapse behind reverse proxy IP address",
+      "relevant_doc_ids": ["KB-006"]
+    },
+    {
+      "id": "q15",
+      "query": "Deployment health probe returns 404 due to wrong path",
+      "relevant_doc_ids": ["KB-007"]
+    },
+    {
+      "id": "q16",
+      "query": "Connection pool sizing and overflow configuration",
+      "relevant_doc_ids": ["KB-008", "KB-003"]
+    },
+    {
+      "id": "q17",
+      "query": "Kubernetes horizontal pod autoscaler memory threshold tuning",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "q18",
+      "query": "Redis cluster sharding and slot migration procedure",
+      "relevant_doc_ids": []
+    }
+  ]
+}

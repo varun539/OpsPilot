@@ -1,0 +1,68 @@
+# Root build context for the backend image (see compose.yaml).
+# Never let local secrets, virtualenvs, caches or runtime data into an image.
+
+# Version control and local tooling
+.git
+.gitignore
+.freebuff/
+.idea/
+.vscode/
+.DS_Store
+
+# Python virtual environments and bytecode
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyc
+
+# Test, lint and coverage output
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Environment files (templates are excluded too: they are not needed in images)
+.env
+.env.*
+.env.example
+
+# Local databases and vector data
+data/
+chroma/
+.chroma/
+chroma_db/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Model caches
+.cache/
+**/.cache/
+models/
+hf-cache/
+
+# Local backups and logs
+backups/
+logs/
+*.log
+
+# Frontend is built from its own context
+frontend/
+
+# Tests and browser artifacts are mounted at runtime for test-only containers
+tests/
+docs/
+*.md
+
+# Container and CI definitions are not part of the runtime image
+Dockerfile
+**/Dockerfile
+compose.yaml
+.github/

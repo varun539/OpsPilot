@@ -209,9 +209,7 @@ class TokenDocumentChunk(BaseModel):
             )
         expected_id = f"{self.parent_chunk_id}::tok::{self.token_chunk_index:04d}"
         if self.token_chunk_id != expected_id:
-            raise ValueError(
-                f"token_chunk_id must be {expected_id!r}, got {self.token_chunk_id!r}"
-            )
+            raise ValueError(f"token_chunk_id must be {expected_id!r}, got {self.token_chunk_id!r}")
         if self.token_overlap >= self.max_tokens:
             raise ValueError(
                 "token_overlap must be strictly smaller than max_tokens "
@@ -239,8 +237,7 @@ def count_tokens(text: str, tokenizer: Any) -> int:
         return len(encoded["input_ids"])
     except (KeyError, TypeError) as exc:  # pragma: no cover - defensive
         raise ValueError(
-            "tokenizer call must return a mapping with 'input_ids'; "
-            f"got {type(encoded).__name__}"
+            f"tokenizer call must return a mapping with 'input_ids'; got {type(encoded).__name__}"
         ) from exc
 
 
@@ -267,9 +264,7 @@ def token_chunk_documents(
 
     token_chunks: list[TokenDocumentChunk] = []
     for chunk in chunks:
-        token_chunks.extend(
-            token_chunk_document_chunk(chunk, tokenizer, max_tokens, token_overlap)
-        )
+        token_chunks.extend(token_chunk_document_chunk(chunk, tokenizer, max_tokens, token_overlap))
     return token_chunks
 
 
@@ -364,9 +359,7 @@ def token_chunk_document_chunk(
             end_token -= 1
             # Keep the heading rule intact even on this safety path: a shrink
             # must not leave a heading stranded at the end of the chunk.
-            while end_token > token_start + 1 and _is_heading_cut(
-                chunk.text, offsets, end_token
-            ):
+            while end_token > token_start + 1 and _is_heading_cut(chunk.text, offsets, end_token):
                 end_token -= 1
             end_char = offsets[end_token - 1][1]
             text = chunk.text[start_char:end_char]
@@ -483,9 +476,7 @@ def _tokenizer_revision(tokenizer: Any) -> str | None:
     init_kwargs = getattr(tokenizer, "init_kwargs", None)
     if isinstance(init_kwargs, dict):
         candidates.append(init_kwargs.get("_commit_hash"))
-        candidates.extend(
-            value for value in init_kwargs.values() if isinstance(value, str)
-        )
+        candidates.extend(value for value in init_kwargs.values() if isinstance(value, str))
     candidates.append(getattr(tokenizer, "vocab_file", None))
     candidates.append(getattr(tokenizer, "tokenizer_file", None))
     candidates.append(getattr(tokenizer, "name_or_path", None))
@@ -497,9 +488,7 @@ def _tokenizer_revision(tokenizer: Any) -> str | None:
         if match:
             return match.group(1)
         # A bare 40-character hex string is an explicit commit, not a path.
-        if len(candidate) == 40 and all(
-            character in "0123456789abcdef" for character in candidate
-        ):
+        if len(candidate) == 40 and all(character in "0123456789abcdef" for character in candidate):
             return candidate
     return None
 
@@ -542,9 +531,7 @@ def _token_offsets(text: str, tokenizer: Any) -> list[tuple[int, int]]:
         ) from exc
 
     if len(input_ids) != len(raw_offsets):  # pragma: no cover - defensive
-        raise ValueError(
-            f"tokenizer returned {len(input_ids)} ids but {len(raw_offsets)} offsets"
-        )
+        raise ValueError(f"tokenizer returned {len(input_ids)} ids but {len(raw_offsets)} offsets")
 
     offsets: list[tuple[int, int]] = []
     for pair in raw_offsets:

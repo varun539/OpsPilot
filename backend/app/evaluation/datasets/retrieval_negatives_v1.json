@@ -1,0 +1,120 @@
+{
+  "version": "retrieval_negatives_v1",
+  "description": "Negative-query benchmark for retrieval abstention. Every query is unanswerable from the eight-document OpsPilot knowledge base, and each states why so a reviewer can audit the label.",
+  "methodology": {
+    "purpose": "Calibrate and report abstention behaviour separately from ranking quality. Phase 22 used only two no-evidence queries, which is too small to support any threshold claim.",
+    "generation": [
+      "Categories were fixed first (missing incident context, unrelated technical, missing log evidence, unsupported infrastructure claim, contradictory evidence, outside knowledge base) and each category was populated until it had at least two examples.",
+      "Queries are written to sound like real incident-investigation questions so they exercise the same retrieval path as answerable ones.",
+      "Each query was checked by hand against all eight KB documents and rejected if any document answered it, even partially."
+    ],
+    "inclusion_criteria": [
+      "No KB document contains the fact required to answer the query.",
+      "The query is answerable in principle by an operator with access to logs, metrics or runbooks outside the KB, so abstention is the correct retrieval outcome rather than a malformed question."
+    ],
+    "exclusion_criteria": [
+      "Any query whose answer appears in KB-001..KB-008, including queries that share the KB's vocabulary but ask for a different fact.",
+      "Queries that are syntactically valid but meaningless, because a meaningless query tests nothing.",
+      "Queries that duplicate q17/q18 of retrieval_v1."
+    ],
+    "known_limitation": "Labels are the author's judgement against a specific eight-document corpus. They are defensible but not independently double-annotated, and they do not transfer to a larger knowledge base."
+  },
+  "queries": [
+    {
+      "id": "NEG-001",
+      "category": "missing_incident_context",
+      "query": "Which service caused this incident and who is its owning team?",
+      "notes": "Requires incident-specific context and an ownership registry; the KB contains no service inventory."
+    },
+    {
+      "id": "NEG-002",
+      "category": "missing_incident_context",
+      "query": "What changed in the most recent deployment that introduced this failure?",
+      "notes": "Requires a deployment history. KB-007 covers deployment misconfiguration patterns, not this incident's change record."
+    },
+    {
+      "id": "NEG-003",
+      "category": "missing_incident_context",
+      "query": "Summarise what the reporter described in the original support ticket.",
+      "notes": "Requires the ticket body, which is not part of the knowledge base."
+    },
+    {
+      "id": "NEG-004",
+      "category": "unrelated_technical",
+      "query": "How do I configure a CUDA device for PyTorch training runs?",
+      "notes": "Machine-learning tooling. No KB document discusses GPUs, CUDA or PyTorch."
+    },
+    {
+      "id": "NEG-005",
+      "category": "unrelated_technical",
+      "query": "Explain how B-tree page splits work inside InnoDB.",
+      "notes": "Storage-engine internals. KB-008 discusses connection pools, not on-disk index structures."
+    },
+    {
+      "id": "NEG-006",
+      "category": "unrelated_technical",
+      "query": "What is the recommended shard key for a Cassandra time-series table?",
+      "notes": "No KB document covers Cassandra or wide-column data modelling."
+    },
+    {
+      "id": "NEG-007",
+      "category": "missing_log_evidence",
+      "query": "Show the exact exception message the worker logged at 03:14 UTC.",
+      "notes": "Requires captured logs. The KB contains guidance documents only, never log excerpts for a specific incident."
+    },
+    {
+      "id": "NEG-008",
+      "category": "missing_log_evidence",
+      "query": "Which container was OOM-killed by the kernel during the last deploy?",
+      "notes": "Requires kernel or container runtime events. KB-007 describes unreachable services, not OOM kills."
+    },
+    {
+      "id": "NEG-009",
+      "category": "unsupported_infrastructure_claim",
+      "query": "How many replicas is the payments service currently running?",
+      "notes": "Requires live cluster state. No KB document records replica counts."
+    },
+    {
+      "id": "NEG-010",
+      "category": "unsupported_infrastructure_claim",
+      "query": "What is the current CPU utilisation of the production database primary?",
+      "notes": "Requires live metrics. The KB has no telemetry values."
+    },
+    {
+      "id": "NEG-011",
+      "category": "unsupported_infrastructure_claim",
+      "query": "How many partitions does the incidents.events Kafka topic have?",
+      "notes": "Requires broker configuration. Kafka does not appear in any KB document."
+    },
+    {
+      "id": "NEG-012",
+      "category": "contradictory_evidence",
+      "query": "One alert says the incident began at 02:00 and another says 04:00; which timestamp is correct?",
+      "notes": "Requires the alert payloads. The KB cannot adjudicate a conflict between two runtime alerts."
+    },
+    {
+      "id": "NEG-013",
+      "category": "contradictory_evidence",
+      "query": "The dashboard shows healthy pods while users report outages; which source should I trust?",
+      "notes": "Requires observing this specific system. KB-007 explains a class of unreachable-service failure, it cannot resolve a live contradiction between two monitors."
+    },
+    {
+      "id": "NEG-014",
+      "category": "outside_knowledge_base",
+      "query": "What is OpsPilot's on-call escalation policy for Sev-1 incidents?",
+      "notes": "Organisational process. The KB is technical troubleshooting content only."
+    },
+    {
+      "id": "NEG-015",
+      "category": "outside_knowledge_base",
+      "query": "Which AWS region hosts the analytics data warehouse?",
+      "notes": "Infrastructure inventory. No KB document lists regions or warehouses."
+    },
+    {
+      "id": "NEG-016",
+      "category": "outside_knowledge_base",
+      "query": "What is the audit-log retention period in our SIEM?",
+      "notes": "Compliance configuration. No KB document covers logging retention."
+    }
+  ]
+}

@@ -75,13 +75,9 @@ DEFAULT_CHUNK_OVERLAP = 150
 # A fence opener may be indented by at most three spaces (CommonMark); four or
 # more spaces starts an indented code block instead. The info string is kept
 # separate so backtick fences containing a backtick there can be rejected.
-_FENCE_OPEN_RE = re.compile(
-    r"^(?P<indent> {0,3})(?P<fence>`{3,}|~{3,})(?P<info>.*)$"
-)
+_FENCE_OPEN_RE = re.compile(r"^(?P<indent> {0,3})(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 # A closing fence has the same shape but nothing after it except spaces/tabs.
-_FENCE_CLOSE_RE = re.compile(
-    r"^(?P<indent> {0,3})(?P<fence>`{3,}|~{3,})(?P<tail>[ \t]*)$"
-)
+_FENCE_CLOSE_RE = re.compile(r"^(?P<indent> {0,3})(?P<fence>`{3,}|~{3,})(?P<tail>[ \t]*)$")
 _HEADING_RE = re.compile(r"^#{1,6}\s")
 _LIST_ITEM_RE = re.compile(r"^(?:[-*+]|\d{1,9}[.)])\s")
 _WHITESPACE_RE = re.compile(r"\s")
@@ -121,9 +117,7 @@ def chunk_document(
 
     pieces = _piece_document(document.content, chunk_size, chunk_overlap)
     texts = _pack_pieces(pieces, chunk_size, chunk_overlap)
-    return [
-        _build_chunk(document, index, text) for index, text in enumerate(texts)
-    ]
+    return [_build_chunk(document, index, text) for index, text in enumerate(texts)]
 
 
 # --------------------------------------------------------------------------- #
@@ -382,9 +376,7 @@ def _split_oversized_block(block: str, limit: int, reserve: int = 0) -> list[str
     return fragments
 
 
-def _piece_document(
-    text: str, chunk_size: int, chunk_overlap: int = 0
-) -> list[tuple[int, str]]:
+def _piece_document(text: str, chunk_size: int, chunk_overlap: int = 0) -> list[tuple[int, str]]:
     """Return ``(block_index, fragment)`` pairs for one document body.
 
     The block index lets packing join fragments from the same paragraph or code
@@ -441,9 +433,7 @@ def _overlap_tail(text: str, overlap: int) -> str:
     return tail.lstrip()
 
 
-def _pack_pieces(
-    pieces: list[tuple[int, str]], chunk_size: int, chunk_overlap: int
-) -> list[str]:
+def _pack_pieces(pieces: list[tuple[int, str]], chunk_size: int, chunk_overlap: int) -> list[str]:
     """Greedily pack fragments into overlapping chunks of at most ``chunk_size``.
 
     Overlap is selected from the actual space left in the new chunk, not from a

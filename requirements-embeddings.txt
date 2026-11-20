@@ -24,3 +24,4 @@
 sentence-transformers==6.3.0
 transformers==5.22.2
 tokenizers==0.23.3
+chromadb==1.5.9
