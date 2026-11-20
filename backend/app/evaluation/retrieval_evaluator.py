@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,140 @@ from .offline import FixtureVectorStore, LexicalEmbeddingModel, build_offline_ru
 
 DEFAULT_K = 5
 
+# Ranking metrics are only defined for queries with labeled relevant documents.
+# No-evidence queries are scored by the abstention gate instead, so their ranking
+# metrics are recorded as ``None`` and can never be averaged into a recall figure
+# by accident.
+RANKING_METRIC_KEYS = (
+    "recall@3",
+    "recall@5",
+    "precision@3",
+    "precision@5",
+    "mrr@5",
+    "ndcg@3",
+    "ndcg@5",
+    "chunk_recall@5",
+    "chunk_precision@5",
+)
+
+def _mean_defined(rows: list[CaseResult], key: str) -> float:
+    """Mean over rows where the metric is actually defined.
+
+    No-evidence rows carry ``None`` for ranking metrics so they can never be
+    folded into a recall figure, and engine failures carry no value at all.
+    """
+    values = [
+        row.metrics.get(key)
+        for row in rows
+        if isinstance(row.metrics.get(key), (int, float))
+        and not isinstance(row.metrics.get(key), bool)
+    ]
+    return average(values)
+
+
+def retrieval_gates(
+    metrics: dict[str, Any], cases: list[CaseResult], *, mode: str = "offline"
+) -> dict[str, Any]:
+    """Split retrieval quality into three independent, explicit gates.
+
+    * ``ranking`` - did labeled queries retrieve a relevant document?
+    * ``integrity`` - are the measurements themselves sound (no duplicates,
+      provenance present, filters honoured, empty corpus tolerated)?
+    * ``abstention`` - did no-evidence queries avoid returning candidates?
+
+    Keeping abstention out of the ranking gate is the whole point: an
+    approximate vector index returns *something* for any query, so folding
+    abstention into recall would permanently gate CI on a property the retrieval
+    layer cannot satisfy without an explicit threshold.
+
+    Blocking policy, stated here rather than implied by an exit code:
+
+    * ``integrity`` is always blocking. A duplicate, a missing source path or a
+      broken metadata filter means the numbers cannot be trusted at all.
+    * ``ranking`` is blocking for every method whose score is meaningful in the
+      active mode. In ``offline`` mode the semantic engine runs on a lexical
+      hashing stand-in rather than the pinned sentence-transformer, so semantic
+      ranking is advisory there; BM25 and hybrid remain blocking because they
+      exercise the production code paths. In ``local`` mode all three block.
+    * ``abstention`` is advisory. The evaluator measures candidate presence, not
+      a calibrated threshold, and the CLI only makes it blocking on request.
+    """
+    labeled = [case for case in cases if case.metrics.get("ranking_scored")]
+    no_evidence = [case for case in cases if case.metrics.get("abstention_checked")]
+    integrity_passed = sum(1 for case in cases if case.metrics.get("integrity_ok"))
+    abstention_passed = sum(
+        1 for case in no_evidence if case.metrics.get("abstention_ok")
+    )
+    filter_checks = int(metrics.get("metadata_filter_checks") or 0)
+    filter_passes = int(metrics.get("metadata_filter_passes") or 0)
+    collection_ok = bool(metrics.get("empty_collection_ok")) and (
+        filter_passes == filter_checks
+    )
+    integrity_ok = collection_ok and integrity_passed == len(cases)
+
+    method_rows: dict[str, Any] = {}
+    for method in ("semantic", "bm25", "hybrid"):
+        rows = [case for case in labeled if case.metrics.get("method") == method]
+        passed = sum(1 for case in rows if case.metrics.get("ranking_ok"))
+        # Offline semantic ranking is a lexical approximation, not the product
+        # embedding model, so a miss there is not evidence of a regression.
+        blocking = not (mode == "offline" and method == "semantic")
+        method_rows[method] = {
+            "status": (
+                "not_applicable"
+                if not rows
+                else ("pass" if passed == len(rows) else "fail")
+            ),
+            "passed": passed,
+            "total": len(rows),
+            "blocking": blocking,
+            "failed_cases": [
+                case.case_id for case in rows if not case.metrics.get("ranking_ok")
+            ],
+        }
+
+    blocking_ranking_failures = [
+        name for name, row in method_rows.items() if row["blocking"] and row["status"] == "fail"
+    ]
+    advisory_ranking_failures = [
+        name
+        for name, row in method_rows.items()
+        if not row["blocking"] and row["status"] == "fail"
+    ]
+    ranking_passed = sum(1 for case in labeled if case.metrics.get("ranking_ok"))
+
+    return {
+        "ranking": {
+            "status": (
+                "not_applicable"
+                if not labeled
+                else ("fail" if blocking_ranking_failures else "pass")
+            ),
+            "passed": ranking_passed,
+            "total": len(labeled),
+            "blocking": True,
+            "blocking_failure_methods": blocking_ranking_failures,
+            "advisory_failure_methods": advisory_ranking_failures,
+            "methods": method_rows,
+        },
+        "integrity": {
+            "status": "pass" if integrity_ok else "fail",
+            "passed": integrity_passed,
+            "total": len(cases),
+            "collection_checks_ok": collection_ok,
+            "blocking": True,
+        },
+        "abstention": {
+            "status": (
+                "not_applicable"
+                if not no_evidence
+                else ("pass" if abstention_passed == len(no_evidence) else "fail")
+            ),
+            "passed": abstention_passed,
+            "total": len(no_evidence),
+            "blocking": False,
+        },
+    }
 
 class RetrievalEvaluationError(RuntimeError):
     """Raised when a requested retrieval mode cannot be prepared safely."""
@@ -131,14 +266,28 @@ def _run_query(
     filters: dict[str, Any] | None = None,
 ) -> CaseResult:
     started = time.perf_counter()
-    failures: list[str] = []
+    ranking_failures: list[str] = []
+    abstention_failures: list[str] = []
+    integrity_failures: list[str] = []
     try:
         results = list(search(query.query, top_k=k, filters=filters) or [])
     except Exception as exc:
+        # An exception makes every downstream measurement meaningless. Record it
+        # as an integrity failure rather than a ranking miss so it cannot be
+        # mistaken for ordinary retrieval quality.
         return CaseResult(
             case_id=f"{query.id}:{method}",
             suite="retrieval",
             passed=False,
+            metrics={
+                "method": method,
+                "ranking_scored": False,
+                "abstention_checked": False,
+                "ranking_ok": False,
+                "abstention_ok": False,
+                "integrity_ok": False,
+                "engine_error": type(exc).__name__,
+            },
             failures=[f"retrieval raised {type(exc).__name__}"],
             duration_ms=(time.perf_counter() - started) * 1000,
         )
@@ -157,17 +306,17 @@ def _run_query(
     }
 
     if len(chunk_ids) != len(results):
-        failures.append("duplicate chunk ids in results")
+        integrity_failures.append("duplicate chunk ids in results")
     if len(doc_ids) != len({str(_value(result, "doc_id") or "") for result in results}):
-        failures.append("duplicate document ids in results")
+        integrity_failures.append("duplicate document ids in results")
     if len(results) > k:
-        failures.append(f"returned {len(results)} results for top_k={k}")
+        integrity_failures.append(f"returned {len(results)} results for top_k={k}")
     if filters:
         expected_doc = str(filters.get("doc_id") or "")
         if expected_doc and any(
             str(_value(result, "doc_id") or "") != expected_doc for result in results
         ):
-            failures.append("metadata filter returned a non-matching document")
+            integrity_failures.append("metadata filter returned a non-matching document")
     provenance_ok = all(
         _value(result, "chunk_id")
         and _value(result, "doc_id")
@@ -176,30 +325,63 @@ def _run_query(
     )
     citation_available = all(bool(_value(result, "chunk_text")) for result in results)
     if not provenance_ok:
-        failures.append("missing source provenance in one or more results")
+        integrity_failures.append("missing source provenance in one or more results")
     if results and not citation_available:
-        failures.append("missing chunk text for citation")
+        integrity_failures.append("missing chunk text for citation")
     if relevant_docs and recall_at_k(doc_ids, relevant_docs, k) == 0:
-        failures.append(f"no relevant document in top {k}")
+        ranking_failures.append(f"no relevant document in top {k}")
     if not relevant_docs and results:
-        failures.append("no-evidence query returned results")
+        abstention_failures.append("no-evidence query returned results")
+
+    doc_counts = Counter(chunk_docs.values())
+    doc_counts.pop("", None)
+    max_chunks_per_document = max(doc_counts.values(), default=0)
+    has_relevant = bool(relevant_docs)
+    scores = [float(value) for value in (_value(result, "score") for result in results)
+              if isinstance(value, (int, float)) and not isinstance(value, bool)]
+
+    if has_relevant:
+        measured = {
+            "recall@3": recall_at_k(doc_ids, relevant_docs, 3),
+            "recall@5": recall_at_k(doc_ids, relevant_docs, 5),
+            "precision@3": precision_at_k(doc_ids, relevant_docs, 3),
+            "precision@5": precision_at_k(doc_ids, relevant_docs, 5),
+            "mrr@5": reciprocal_rank_at_k(doc_ids, relevant_docs, 5),
+            "ndcg@3": ndcg_at_k(doc_ids, relevant_docs, 3),
+            "ndcg@5": ndcg_at_k(doc_ids, relevant_docs, 5),
+            "chunk_recall@5": recall_at_k(chunk_ids, relevant_chunk_ids, 5),
+            "chunk_precision@5": precision_at_k(chunk_ids, relevant_chunk_ids, 5),
+        }
+    else:
+        # Deliberately undefined: no labeled relevant document exists, so any
+        # recall/nDCG value here would be a fabricated zero.
+        measured = {key: None for key in RANKING_METRIC_KEYS}
 
     metrics = {
         "method": method,
-        "has_relevant": bool(relevant_docs),
+        "has_relevant": has_relevant,
+        "ranking_scored": has_relevant,
+        "abstention_checked": not has_relevant,
+        "ranking_ok": has_relevant and not ranking_failures and not integrity_failures,
+        "abstention_ok": (
+            (not has_relevant) and not abstention_failures and not integrity_failures
+        ),
+        "integrity_ok": not integrity_failures,
+        "ranking_failures": ranking_failures,
+        "abstention_failures": abstention_failures,
+        "integrity_failures": integrity_failures,
+        "distinct_documents@5": len(doc_ids),
+        "max_chunks_per_document@5": max_chunks_per_document,
+        "chunk_concentration@5": (
+            max_chunks_per_document / len(results) if results else 0.0
+        ),
         "retrieved_doc_ids": doc_ids,
         "retrieved_chunk_ids": chunk_ids,
         "result_count": len(results),
-        "recall@3": recall_at_k(doc_ids, relevant_docs, 3),
-        "recall@5": recall_at_k(doc_ids, relevant_docs, 5),
-        "precision@3": precision_at_k(doc_ids, relevant_docs, 3),
-        "precision@5": precision_at_k(doc_ids, relevant_docs, 5),
-        "mrr@5": reciprocal_rank_at_k(doc_ids, relevant_docs, 5),
-        "ndcg@3": ndcg_at_k(doc_ids, relevant_docs, 3),
-        "ndcg@5": ndcg_at_k(doc_ids, relevant_docs, 5),
-        "chunk_recall@5": recall_at_k(chunk_ids, relevant_chunk_ids, 5),
-        "chunk_precision@5": precision_at_k(chunk_ids, relevant_chunk_ids, 5),
-        "no_evidence_returned": (not relevant_docs) and bool(results),
+        "top_score": max(scores) if scores else None,
+        "min_score": min(scores) if scores else None,
+        **measured,
+        "no_evidence_returned": (not has_relevant) and bool(results),
         "provenance_ok": provenance_ok,
         "citation_available": citation_available,
         "latency_ms": duration,
@@ -207,9 +389,9 @@ def _run_query(
     return CaseResult(
         case_id=f"{query.id}:{method}",
         suite="retrieval",
-        passed=not failures,
+        passed=not (ranking_failures or abstention_failures or integrity_failures),
         metrics=metrics,
-        failures=failures,
+        failures=ranking_failures + abstention_failures + integrity_failures,
         duration_ms=duration,
     )
 
@@ -259,33 +441,74 @@ def evaluate_retrieval(
                 "queries": len(rows),
                 "labeled_queries": len(labeled),
                 "no_evidence_queries": len(no_evidence),
-                "retrieval_pass_rate": (
+                "pass_rate": (
                     sum(1 for row in rows if row.passed) / len(rows) if rows else 0.0
                 ),
-                "recall@3": average(row.metrics["recall@3"] for row in labeled),
-                "recall@5": average(row.metrics["recall@5"] for row in labeled),
-                "precision@3": average(row.metrics["precision@3"] for row in labeled),
-                "precision@5": average(row.metrics["precision@5"] for row in labeled),
-                "mrr@5": average(row.metrics["mrr@5"] for row in labeled),
-                "ndcg@3": average(row.metrics["ndcg@3"] for row in labeled),
-                "ndcg@5": average(row.metrics["ndcg@5"] for row in labeled),
-                "chunk_recall@5": average(
-                    row.metrics["chunk_recall@5"] for row in labeled
+                "ranking_pass_rate": (
+                    sum(1 for row in labeled if row.metrics.get("ranking_ok"))
+                    / len(labeled)
+                    if labeled
+                    else 1.0
                 ),
-                "chunk_precision@5": average(
-                    row.metrics["chunk_precision@5"] for row in labeled
+                "integrity_pass_rate": (
+                    sum(1 for row in rows if row.metrics.get("integrity_ok")) / len(rows)
+                    if rows
+                    else 1.0
+                ),
+                "abstention_pass_rate": (
+                    sum(1 for row in no_evidence if row.metrics.get("abstention_ok"))
+                    / len(no_evidence)
+                    if no_evidence
+                    else 1.0
+                ),
+                "recall@3": _mean_defined(labeled, "recall@3"),
+                "recall@5": _mean_defined(labeled, "recall@5"),
+                "precision@3": _mean_defined(labeled, "precision@3"),
+                "precision@5": _mean_defined(labeled, "precision@5"),
+                "mrr@5": _mean_defined(labeled, "mrr@5"),
+                "ndcg@3": _mean_defined(labeled, "ndcg@3"),
+                "ndcg@5": _mean_defined(labeled, "ndcg@5"),
+                "chunk_recall@5": _mean_defined(labeled, "chunk_recall@5"),
+                "chunk_precision@5": _mean_defined(labeled, "chunk_precision@5"),
+                # Document coverage is recall@5 at the document level; reported
+                # under both names so the denominator is explicit.
+                "relevant_doc_coverage@5": _mean_defined(labeled, "recall@5"),
+                "distinct_documents@5": average(
+                    row.metrics["distinct_documents@5"] for row in rows
+                ),
+                "max_chunks_per_document@5": average(
+                    row.metrics["max_chunks_per_document@5"] for row in rows
+                ),
+                "chunk_concentration@5": average(
+                    row.metrics["chunk_concentration@5"] for row in rows
+                ),
+                "abstention_queries": len(no_evidence),
+                "abstention_returned_results": sum(
+                    1 for row in no_evidence if row.metrics.get("no_evidence_returned")
+                ),
+                "abstention_clean_rate": (
+                    1.0
+                    - sum(
+                        1
+                        for row in no_evidence
+                        if row.metrics.get("no_evidence_returned")
+                    )
+                    / len(no_evidence)
+                    if no_evidence
+                    else 1.0
                 ),
                 "avg_latency_ms": average(row.metrics["latency_ms"] for row in rows),
                 "no_evidence_query_returned_results": sum(
                     1 for row in no_evidence if row.metrics["no_evidence_returned"]
                 ),
                 "provenance_ok_rate": (
-                    sum(1 for row in rows if row.metrics["provenance_ok"]) / len(rows)
+                    sum(1 for row in rows if row.metrics.get("provenance_ok")) / len(rows)
                     if rows
                     else 0.0
                 ),
                 "citation_available_rate": (
-                    sum(1 for row in rows if row.metrics["citation_available"]) / len(rows)
+                    sum(1 for row in rows if row.metrics.get("citation_available"))
+                    / len(rows)
                     if rows
                     else 0.0
                 ),
@@ -314,7 +537,12 @@ def evaluate_retrieval(
             "empty_collection_ok": _empty_collection_ok(),
             "metadata_filter_checks": filter_checks,
             "metadata_filter_passes": filter_passes,
+            "labeled_queries": sum(1 for case in cases if case.metrics.get("ranking_scored")),
+            "no_evidence_queries": sum(
+                1 for case in cases if case.metrics.get("abstention_checked")
+            ),
         }
+        metrics["gates"] = retrieval_gates(metrics, cases, mode=mode)
         return SuiteResult(
             suite="retrieval",
             mode=mode,
@@ -326,7 +554,11 @@ def evaluate_retrieval(
                 "sentence-transformer; semantic quality is only meaningful in local mode.",
                 "Similarity and RRF scores are ranking values, not calibrated probabilities.",
                 "No-evidence queries are expected to expose approximate-search false "
-                "positives; that count is reported, not hidden.",
+                "positives; that count is reported as its own advisory gate and is "
+                "never mixed into recall or nDCG.",
+                "The abstention gate is advisory because this evaluator does not "
+                "implement a no-evidence threshold; see the abstention suite for "
+                "threshold trade-offs over the expanded negative-query dataset.",
             ],
             duration_ms=(time.perf_counter() - started) * 1000,
         )

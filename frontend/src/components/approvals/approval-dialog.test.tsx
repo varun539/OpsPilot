@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApprovalReviewDialog } from "@/components/approvals/approval-review-dialog";
-import type { ApprovalQueueItem } from "@/lib/api/types";
+import { getInvestigation } from "@/lib/api/investigations";
+import type { ApprovalQueueItem, Investigation } from "@/lib/api/types";
 
 vi.mock("@/lib/api/investigations", () => ({
   getInvestigation: vi.fn().mockResolvedValue({
@@ -92,5 +93,36 @@ describe("ApprovalReviewDialog", () => {
     await waitFor(() => expect(screen.getByText("Decision submitted")).toBeInTheDocument());
     expect(screen.getByText(/Workflow status: completed/)).toBeInTheDocument();
     expect(onDecided).toHaveBeenCalled();
+  });
+
+  it("blocks approval and shows the failure when report generation failed", async () => {
+    vi.mocked(getInvestigation).mockResolvedValueOnce({
+      ...(item.investigation ?? {}),
+      report: {
+        question: "q",
+        report: {
+          summary: "Gemini API request failed (status 503)",
+          incident_category: "insufficient_evidence",
+          evidence_status: "insufficient",
+        },
+        generation_status: "provider_error",
+        valid: false,
+        citation_valid: false,
+        errors: ["LLMResponseError: Gemini API request failed (status 503)"],
+      },
+    } as unknown as Investigation);
+
+    render(
+      <ToastProvider>
+        <ApprovalReviewDialog item={item} onClose={() => undefined} onDecided={() => undefined} />
+      </ToastProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/approval is unavailable/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: /Approve…/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Reject…/i })).toBeEnabled();
+    expect(screen.getByText("Report generation failed")).toBeInTheDocument();
   });
 });

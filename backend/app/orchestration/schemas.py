@@ -107,6 +107,10 @@ class InvestigationStartResponse(BaseModel):
     workflow_status: str
     approval_status: str | None = None
     message: str
+    # Additive: lets clients distinguish a normal review pause from a pause
+    # caused by a failed report generation.
+    report_valid: bool | None = None
+    report_status: str | None = None
 
 
 class InvestigationApprovalRequest(BaseModel):
@@ -133,3 +137,5 @@ class InvestigationApprovalResponse(BaseModel):
     approval_status: str | None = None
     message: str
     result: dict[str, Any] | None = None
+    report_valid: bool | None = None
+    report_status: str | None = None

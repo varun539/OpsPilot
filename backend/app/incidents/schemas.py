@@ -134,6 +134,9 @@ class InvestigationCreate(BaseModel):
     thread_id: str | None = None
     workflow_status: str | None = None
     last_error: str | None = None
+    planner_used: bool | None = None
+    planner_status: str | None = None
+    planner_error: str | None = None
 
 
 class ApprovalCreate(BaseModel):

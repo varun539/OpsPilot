@@ -41,10 +41,12 @@ _SECRET_PATTERN = re.compile(
 )
 
 
+def _sanitize_text(text: str, *, limit: int = 500) -> str:
+    return _SECRET_PATTERN.sub("[redacted]", text)[:limit]
+
+
 def _sanitize_error(exc: Exception) -> str:
-    text = f"{type(exc).__name__}: {exc}"
-    text = _SECRET_PATTERN.sub("[redacted]", text)
-    return text[:500]
+    return _sanitize_text(f"{type(exc).__name__}: {exc}")
 
 
 def _accepts_keyword(method: Any, name: str) -> bool:
@@ -161,6 +163,15 @@ class InvestigationOrchestrationService:
     def _thread_id(self) -> str:
         return f"thread-{uuid.uuid4().hex}"
 
+    @staticmethod
+    def _report_state(state: dict[str, Any]) -> tuple[bool, str]:
+        """Return (report_is_valid, generation_status) for a graph state."""
+        report = (state or {}).get("investigation_report")
+        if not isinstance(report, dict):
+            return False, "missing"
+        valid = bool(report.get("valid", False)) and bool(report.get("citation_valid", False))
+        return valid, str(report.get("generation_status") or "unknown")
+
     def _incident_context(self, incident: Any) -> str:
         return (
             f"Incident: {getattr(incident, 'incident_number', '')} "
@@ -173,6 +184,24 @@ class InvestigationOrchestrationService:
             f"Service: {getattr(incident, 'service_name', '')}\n"
             f"Description: {getattr(incident, 'description', '') or ''}"
         )
+
+    @staticmethod
+    def _planner_fields(state: dict[str, Any]) -> dict[str, Any]:
+        """Extract the planner status written by the graph, sanitized for storage.
+
+        Only the finite status vocabulary and a redacted, truncated error are
+        persisted. Raw provider output and tracebacks never reach this layer,
+        because the planner already reduces them to a classified message.
+        """
+        status = str((state or {}).get("planner_status") or "").strip()
+        if not status:
+            return {}
+        error = _sanitize_text(str((state or {}).get("planner_error") or ""), limit=300)
+        return {
+            "planner_used": bool((state or {}).get("planner_used")),
+            "planner_status": status[:40],
+            "planner_error": error or None,
+        }
 
     def _prepare_request(self, incident: Any, payload: Any) -> InvestigationRequest:
         fallback_question = (
@@ -254,10 +283,25 @@ class InvestigationOrchestrationService:
     def _persist_resume_output(self, investigation_id: str, state: dict[str, Any]) -> None:
         report = state.get("investigation_report")
         if report is not None:
+            execution_status = (state or {}).get("execution_status", "pending")
+            approval_status = (state or {}).get("approval_status", "")
+            report_valid, _ = self._report_state(state or {})
+            completed = execution_status in {
+                "completed",
+                "approved",
+                "validated_report",
+                "rejected",
+            }
+            if approval_status == "approved" and not report_valid:
+                completed = False
             self.incident_service.persist_pending_report(
                 investigation_id,
                 report,
-                status=InvestigationStatus.completed.value,
+                status=(
+                    InvestigationStatus.completed.value
+                    if completed
+                    else InvestigationStatus.failed.value
+                ),
             )
         self._persist_evidence(investigation_id, state)
 
@@ -355,9 +399,16 @@ class InvestigationOrchestrationService:
             )
             raise InvestigationStartError("investigation execution failed")
 
+        planner_fields = self._planner_fields(state or {})
+        if planner_fields:
+            self.incident_service.update_investigation(
+                investigation.id, **planner_fields
+            )
+
         interrupted = "__interrupt__" in (state or {})
         report = (state or {}).get("investigation_report")
         execution_status = (state or {}).get("execution_status", "pending")
+        report_valid, report_status = self._report_state(state or {})
 
         if interrupted:
             try:
@@ -420,7 +471,14 @@ class InvestigationOrchestrationService:
                 investigation_id=investigation.id,
                 workflow_status="awaiting_approval",
                 approval_status=getattr(approval, "status", "pending"),
-                message="investigation paused for human approval",
+                message=(
+                    "investigation paused for human approval"
+                    if report_valid
+                    else "investigation paused for human approval after report generation "
+                    f"failed ({report_status})"
+                ),
+                report_valid=report_valid,
+                report_status=report_status,
             )
 
         # Synchronous completion/failure without interrupt.
@@ -478,6 +536,8 @@ class InvestigationOrchestrationService:
             message=(
                 "investigation completed" if final_status == "completed" else "investigation failed"
             ),
+            report_valid=report_valid,
+            report_status=report_status,
         )
 
     def get_investigation(self, investigation_id: str) -> Any:
@@ -586,17 +646,33 @@ class InvestigationOrchestrationService:
         try:
             execution_status = (state or {}).get("execution_status", "pending")
             approval_status = (state or {}).get("approval_status", decision)
+            report_valid, report_status = self._report_state(state or {})
             self._persist_resume_output(investigation_id, state or {})
         except Exception as exc:
             sanitized = _sanitize_error(exc)
             self._mark_resume_failed(investigation_id, incident_id, principal, decision, sanitized)
             raise InvestigationResumeError("workflow result persistence failed")
 
-        final_workflow_status = (
-            "completed"
-            if execution_status in {"completed", "approved", "validated_report", "rejected"}
-            else "failed"
-        )
+        completed = execution_status in {
+            "completed",
+            "approved",
+            "validated_report",
+            "rejected",
+        }
+        if approval_status == "approved" and not report_valid:
+            # Defence in depth: an approved but invalid report never counts as
+            # a successful investigation, even if an older checkpoint said so.
+            completed = False
+        final_workflow_status = "completed" if completed else "failed"
+        last_error = None
+        if final_workflow_status == "failed":
+            if approval_status == "approved" and not report_valid:
+                last_error = _sanitize_text(
+                    "investigation report is not valid "
+                    f"(generation_status={report_status}); approval recorded without completion"
+                )
+            else:
+                last_error = "investigation did not complete"
         self.incident_service.update_investigation(
             investigation_id,
             workflow_status=final_workflow_status,
@@ -605,7 +681,7 @@ class InvestigationOrchestrationService:
                 if final_workflow_status == "completed"
                 else InvestigationStatus.failed.value
             ),
-            last_error=None,
+            last_error=last_error,
         )
 
         # Incident returns to investigating after review; never auto-resolve.
@@ -636,8 +712,18 @@ class InvestigationOrchestrationService:
             incident_id=incident_id,
             workflow_status=final_workflow_status,
             approval_status=approval_status,
-            message="investigation resumed",
-            result={"execution_status": execution_status},
+            message=(
+                "investigation resumed"
+                if final_workflow_status == "completed"
+                else "investigation resumed but did not complete"
+            ),
+            result={
+                "execution_status": execution_status,
+                "report_valid": report_valid,
+                "generation_status": report_status,
+            },
+            report_valid=report_valid,
+            report_status=report_status,
         )
 
     start = start_investigation

@@ -531,6 +531,12 @@ export interface components {
             workflow_status?: string | null;
             /** Last Error */
             last_error?: string | null;
+            /** Planner Used */
+            planner_used?: boolean | null;
+            /** Planner Status */
+            planner_status?: string | null;
+            /** Planner Error */
+            planner_error?: string | null;
             /** Started At */
             started_at: string;
             /** Completed At */
@@ -563,6 +569,10 @@ export interface components {
             result?: {
                 [key: string]: unknown;
             } | null;
+            /** Report Valid */
+            report_valid?: boolean | null;
+            /** Report Status */
+            report_status?: string | null;
         };
         /**
          * InvestigationStartRequest
@@ -621,6 +631,10 @@ export interface components {
             approval_status?: string | null;
             /** Message */
             message: string;
+            /** Report Valid */
+            report_valid?: boolean | null;
+            /** Report Status */
+            report_status?: string | null;
         };
         /** Resolution */
         Resolution: {

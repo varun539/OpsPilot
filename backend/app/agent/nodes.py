@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from backend.app.agent.models import InvestigationRequest
-from backend.app.agent.planner import InvestigationPlanner
+from backend.app.agent.planner import InvestigationPlanner, planner_status
 from backend.app.agent.state import DEFAULT_STATE
 from backend.app.agent.tool_registry import (
     MAX_TOOL_INVOCATIONS,
@@ -16,10 +16,20 @@ from backend.app.agent.tool_registry import (
     execute_tool,
 )
 from backend.app.investigation_tools import correlate_incidents
+from backend.app.investigation_tools.sanitization import redact_text
 from backend.app.rag.citation_validator import CitationValidator
 from backend.app.rag.models import RAGResponse
 
 ALLOWED_TOOLS = set(TOOL_NAMES)
+
+
+def _report_validity(state: dict[str, Any]) -> tuple[bool, str]:
+    """Return whether the synthesized report is valid and its generation status."""
+    report = (state or {}).get("investigation_report")
+    if not isinstance(report, dict):
+        return False, "missing"
+    valid = bool(report.get("valid", False)) and bool(report.get("citation_valid", False))
+    return valid, str(report.get("generation_status") or "unknown")
 
 
 def _merge(state: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
@@ -184,6 +194,15 @@ def plan_investigation(
     )
     selected = [tool for tool in plan.selected_tools if tool in ALLOWED_TOOLS]
     selected = selected[:6]
+    warnings = list((state or {}).get("warnings", []) or [])
+    planner_error = ""
+    if llm_provider is not None and not used:
+        # A configured provider failed: keep the deterministic fallback, but
+        # never let the degradation go unrecorded.
+        planner_error = planner.last_error or "planner LLM call failed"
+        warnings.append(
+            f"Planner LLM call failed; deterministic fallback plan used: {planner_error}"
+        )
     return _merge(
         state,
         {
@@ -191,6 +210,13 @@ def plan_investigation(
             "selected_tools": selected,
             "planner_used": used,
             "fallback_used": plan.fallback,
+            "planner_error": planner_error,
+            "planner_status": planner_status(
+                used=used,
+                configured=llm_provider is not None,
+                error=planner_error,
+            ),
+            "warnings": warnings,
             "plan_rationale": plan.rationale,
             "missing_information": plan.missing_information,
             "execution_status": "planned",
@@ -300,7 +326,10 @@ def synthesize_report(
     error_details = list(state.get("error_details", []) or [])
 
     rag_response: RAGResponse | None = None
+    synthesis_error: str | None = None
+    synthesis_attempted = False
     if rag_service is not None and hasattr(rag_service, "investigate_with_evidence"):
+        synthesis_attempted = True
         try:
             rag_response = rag_service.investigate_with_evidence(
                 question,
@@ -311,8 +340,10 @@ def synthesize_report(
                 top_k=request.get("requested_top_k"),
             )
         except Exception as exc:
-            error_details.append(f"RAG synthesis failed: {exc}")
+            synthesis_error = redact_text(f"{type(exc).__name__}: {exc}")[:300]
+            error_details.append(f"RAG synthesis failed: {synthesis_error}")
     elif llm_provider is not None:
+        synthesis_attempted = True
         try:
             rag_response = _synthesize_with_provider(
                 llm_provider,
@@ -322,13 +353,25 @@ def synthesize_report(
                 correlation_results,
             )
         except Exception as exc:
-            error_details.append(f"RAG synthesis failed: {exc}")
+            synthesis_error = redact_text(f"{type(exc).__name__}: {exc}")[:300]
+            error_details.append(f"RAG synthesis failed: {synthesis_error}")
     else:
         warnings.append("No LLM provider configured; using insufficient-evidence response.")
         rag_response = _insufficient_rag_response(question, evidence)
 
     if rag_response is None:
-        rag_response = _insufficient_rag_response(question, evidence)
+        # A failed synthesis must not be reported as a valid report.
+        if synthesis_error is not None or synthesis_attempted:
+            errors = [synthesis_error or "RAG synthesis returned no response"]
+            rag_response = _insufficient_rag_response(
+                question,
+                evidence,
+                generation_status="provider_error",
+                valid=False,
+                errors=errors,
+            )
+        else:
+            rag_response = _insufficient_rag_response(question, evidence)
 
     evidence_status = state.get("evidence_status", "unknown")
     if getattr(rag_response, "retrieved_evidence", None):
@@ -472,8 +515,21 @@ def _insufficient_report(reason: str) -> Any:
     )
 
 
-def _insufficient_rag_response(question: str, evidence: list[dict[str, Any]]) -> RAGResponse:
-    report = _insufficient_report("No usable evidence was available for investigation.")
+def _insufficient_rag_response(
+    question: str,
+    evidence: list[dict[str, Any]],
+    *,
+    generation_status: str = "insufficient_evidence",
+    valid: bool = True,
+    errors: list[str] | None = None,
+) -> RAGResponse:
+    validation_errors = list(errors or [])
+    reason = (
+        "; ".join(validation_errors)
+        if validation_errors
+        else "No usable evidence was available for investigation."
+    )
+    report = _insufficient_report(reason)
     return RAGResponse(
         question=question,
         report=report,
@@ -483,10 +539,10 @@ def _insufficient_rag_response(question: str, evidence: list[dict[str, Any]]) ->
         provider="",
         model="",
         usage=None,
-        generation_status="insufficient_evidence",
-        valid=True,
-        citation_valid=True,
-        validation_errors=[],
+        generation_status=generation_status,
+        valid=valid,
+        citation_valid=valid,
+        validation_errors=validation_errors,
     )
 
 
@@ -621,7 +677,17 @@ def human_review(state: dict[str, Any], **_: Any) -> dict[str, Any]:
 
     execution_status = "awaiting_approval"
     if approval_status == "approved":
-        execution_status = "approved"
+        report_valid, report_status = _report_validity(state)
+        if report_valid:
+            execution_status = "approved"
+        else:
+            # The human decision is preserved, but approving an invalid report
+            # must never turn a failed generation into a completed investigation.
+            execution_status = "failed"
+            error_details.append(
+                "Approval recorded but the investigation report is not valid "
+                f"(generation_status={report_status}); the investigation is not completed."
+            )
     elif approval_status == "rejected":
         execution_status = "rejected"
     elif approval_status == "invalid":
@@ -642,8 +708,9 @@ def finalize(state: dict[str, Any], **_: Any) -> dict[str, Any]:
     state = state or {}
     approval_status = state.get("approval_status", "not_requested")
     execution_status = state.get("execution_status", "pending")
+    report_valid, _ = _report_validity(state)
     if approval_status == "approved":
-        execution_status = "completed"
+        execution_status = "completed" if report_valid else "failed"
     elif approval_status == "rejected":
         execution_status = "rejected"
     elif approval_status == "invalid":

@@ -46,6 +46,85 @@ describe("InvestigationReportView", () => {
     expect(screen.getByText("No report available yet")).toBeInTheDocument();
   });
 
+  it("shows an insufficient-evidence notice without calling it a failure", () => {
+    render(
+      <InvestigationReportView
+        report={{
+          question: "Why is checkout slow?",
+          report: {
+            summary: "No usable evidence was available for investigation.",
+            incident_category: "insufficient_evidence",
+            evidence_status: "insufficient",
+            root_cause_hypotheses: [],
+            recommended_actions: [],
+          },
+          generation_status: "insufficient_evidence",
+          valid: true,
+          citation_valid: true,
+        }}
+        summary={null}
+        suspectedRootCause={null}
+      />,
+    );
+
+    expect(screen.getByText(/Insufficient evidence:/)).toBeInTheDocument();
+    expect(screen.getByText("Executive summary")).toBeInTheDocument();
+    expect(screen.queryByText("Report generation failed")).not.toBeInTheDocument();
+  });
+
+  it("shows a failure state instead of a placeholder report", () => {
+    render(
+      <InvestigationReportView
+        report={{
+          question: "Why is checkout slow?",
+          report: {
+            summary: "Placeholder summary text",
+            incident_category: "insufficient_evidence",
+            evidence_status: "insufficient",
+            root_cause_hypotheses: [],
+            recommended_actions: [],
+          },
+          generation_status: "provider_error",
+          valid: false,
+          citation_valid: false,
+          errors: ["LLMResponseError: Gemini API request failed (status 503)"],
+        }}
+        summary="Placeholder summary text"
+        suspectedRootCause={null}
+      />,
+    );
+
+    expect(screen.getByText("Report generation failed")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/no assessment to review/i);
+    expect(screen.getByText(/LLMResponseError/)).toBeInTheDocument();
+    expect(screen.getByText("provider_error")).toBeInTheDocument();
+    expect(screen.queryByText("Executive summary")).not.toBeInTheDocument();
+    expect(screen.queryByText("Placeholder summary text")).not.toBeInTheDocument();
+  });
+
+  it("treats citation validation failures as generation failures", () => {
+    render(
+      <InvestigationReportView
+        report={{
+          report: {
+            summary: "Connection pool exhaustion.",
+            evidence_status: "sufficient",
+          },
+          generation_status: "citation_validation_failed",
+          valid: false,
+          citation_valid: false,
+          validation_errors: ["unknown chunk id: KB-999::invented"],
+        }}
+        summary={null}
+        suspectedRootCause={null}
+      />,
+    );
+
+    expect(screen.getByText("Report generation failed")).toBeInTheDocument();
+    expect(screen.getByText(/unknown chunk id/)).toBeInTheDocument();
+    expect(screen.queryByText("Connection pool exhaustion.")).not.toBeInTheDocument();
+  });
+
   it("keeps citations and provenance from the persisted envelope", () => {
     render(
       <InvestigationReportView

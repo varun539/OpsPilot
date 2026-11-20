@@ -15,7 +15,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from backend.app.agent.models import InvestigationRequest
 
 EvaluationMode = Literal["offline", "local", "live"]
-SuiteName = Literal["diagnostics", "retrieval", "agent", "reliability", "all"]
+SuiteName = Literal[
+    "diagnostics",
+    "retrieval",
+    "abstention",
+    "agent",
+    "reliability",
+    "planner",
+    "report",
+    "all",
+]
 ToolName = Literal[
     "log_analyzer",
     "stack_trace_analyzer",
@@ -161,6 +170,108 @@ class RetrievalDataset(BaseModel):
         ids = [query.id for query in self.queries]
         if len(set(ids)) != len(ids):
             raise ValueError("duplicate retrieval query ids")
+        return self
+
+
+class NegativeQuery(BaseModel):
+    """An unanswerable query with an auditable reason and category label."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    category: Literal[
+        "missing_incident_context",
+        "unrelated_technical",
+        "missing_log_evidence",
+        "unsupported_infrastructure_claim",
+        "contradictory_evidence",
+        "outside_knowledge_base",
+    ]
+    query: str = Field(min_length=1)
+    notes: str = ""
+
+
+class NegativeDataset(BaseModel):
+    """Versioned no-evidence benchmark with its generation methodology."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    description: str = ""
+    methodology: dict[str, Any] = Field(default_factory=dict)
+    queries: list[NegativeQuery] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "NegativeDataset":
+        ids = [query.id for query in self.queries]
+        if len(set(ids)) != len(ids):
+            raise ValueError("duplicate negative query ids")
+        return self
+
+
+class PlannerScenario(BaseModel):
+    """One scripted planner behavior with an explicit expected outcome.
+
+    Labels here are fixture expectations about planner *control flow* (did the
+    provider plan get used, or did the bounded fallback run), not judgments of
+    model language quality.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1)
+    dataset_version: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    request: InvestigationRequest
+    available_inputs: list[str] = Field(default_factory=list)
+    response_kind: Literal["plan", "timeout", "refusal", "empty", "raw"]
+    selected_tools: list[str] = Field(default_factory=list)
+    raw_output: dict[str, Any] | None = None
+    expected_used: bool
+    expected_fallback: bool
+    expected_tools: list[str] = Field(default_factory=list)
+    expect_unauthorized_attempt: bool = False
+    expected_error_kind: Literal[
+        "none", "unknown_tool", "too_many", "duplicate", "validation", "timeout", "refusal"
+    ] = "none"
+    expected_error_contains: str | None = None
+
+    @model_validator(mode="after")
+    def _response_is_consistent(self) -> "PlannerScenario":
+        if self.response_kind == "raw" and self.raw_output is None:
+            raise ValueError("raw scenarios require raw_output")
+        if self.response_kind == "plan" and not self.selected_tools:
+            raise ValueError("valid plan scenarios require selected_tools")
+        if self.expected_fallback and self.expected_error_kind == "none":
+            raise ValueError("fallback scenarios require an error kind")
+        return self
+
+
+class ReportCase(BaseModel):
+    """A candidate report scored against fixed evidence and explicit labels."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1)
+    dataset_version: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    report: dict[str, Any] | None = None
+    raw_report: str | None = None
+    evidence: Literal["default", "empty"] = "default"
+    expected_outcome: Literal[
+        "valid_grounded",
+        "schema_failure",
+        "citation_failure",
+        "insufficient_evidence",
+        "label_mismatch",
+    ]
+    expected_category: str = ""
+    expected_doc_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _payload_is_consistent(self) -> "ReportCase":
+        if (self.report is None) == (self.raw_report is None):
+            raise ValueError("exactly one of report or raw_report is required")
         return self
 
 

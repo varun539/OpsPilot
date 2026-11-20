@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS investigations (
     thread_id TEXT,
     workflow_status TEXT,
     last_error TEXT,
+    planner_used INTEGER,
+    planner_status TEXT,
+    planner_error TEXT,
     started_at TEXT NOT NULL,
     completed_at TEXT,
     created_at TEXT NOT NULL,
@@ -158,6 +161,12 @@ class ApplicationDatabase:
                 "thread_id": "TEXT",
                 "workflow_status": "TEXT",
                 "last_error": "TEXT",
+                # Phase 23 planner observability. Nullable by design: rows
+                # written before this migration stay readable and simply
+                # report an unknown planner status.
+                "planner_used": "INTEGER",
+                "planner_status": "TEXT",
+                "planner_error": "TEXT",
             }
             for column, ddl in migrations.items():
                 if column not in columns:

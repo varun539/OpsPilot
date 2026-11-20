@@ -151,6 +151,11 @@ class Investigation(BaseModel):
     thread_id: str | None = None
     workflow_status: str | None = None
     last_error: str | None = None
+    # Planner observability. ``None`` means the row predates Phase 23 or the
+    # planner did not run; it never means "planner succeeded".
+    planner_used: bool | None = None
+    planner_status: str | None = None
+    planner_error: str | None = None
     started_at: str
     completed_at: str | None = None
     created_at: str

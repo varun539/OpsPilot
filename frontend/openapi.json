@@ -2019,6 +2019,39 @@
             ],
             "title": "Last Error"
           },
+          "planner_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Used"
+          },
+          "planner_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Status"
+          },
+          "planner_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Error"
+          },
           "started_at": {
             "type": "string",
             "title": "Started At"
@@ -2129,6 +2162,28 @@
               }
             ],
             "title": "Result"
+          },
+          "report_valid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Valid"
+          },
+          "report_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Status"
           }
         },
         "additionalProperties": false,
@@ -2338,6 +2393,28 @@
           "message": {
             "type": "string",
             "title": "Message"
+          },
+          "report_valid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Valid"
+          },
+          "report_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Status"
           }
         },
         "additionalProperties": false,

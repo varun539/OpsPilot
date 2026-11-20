@@ -9,14 +9,26 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from .models import DiagnosticCase, IncidentCase, RetrievalDataset
+from .models import (
+    DiagnosticCase,
+    IncidentCase,
+    NegativeDataset,
+    PlannerScenario,
+    ReportCase,
+    RetrievalDataset,
+)
 
 DATASET_DIR = Path(__file__).resolve().parent / "datasets"
 INCIDENTS_PATH = DATASET_DIR / "incidents_v1.jsonl"
 DIAGNOSTICS_PATH = DATASET_DIR / "diagnostics_v1.jsonl"
 RETRIEVAL_PATH = DATASET_DIR / "retrieval_v1.json"
+NEGATIVES_PATH = DATASET_DIR / "retrieval_negatives_v1.json"
+PLANNER_PATH = DATASET_DIR / "planner_v1.jsonl"
+REPORTS_PATH = DATASET_DIR / "reports_v1.jsonl"
 INCIDENTS_VERSION = "incidents_v1"
 DIAGNOSTICS_VERSION = "diagnostics_v1"
+PLANNER_VERSION = "planner_v1"
+REPORTS_VERSION = "reports_v1"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 KNOWLEDGE_BASE_DIR = REPO_ROOT / "data" / "knowledge_base"
 
@@ -124,9 +136,42 @@ def load_retrieval(path: Path | str | None = None) -> RetrievalDataset:
         raise DatasetError(f"{dataset_path.name}: invalid retrieval dataset: {exc}") from exc
 
 
+def load_retrieval_negatives(path: Path | str | None = None) -> NegativeDataset:
+    dataset_path = Path(path) if path is not None else NEGATIVES_PATH
+    if not dataset_path.is_file():
+        raise DatasetError(f"negative-query dataset not found: {dataset_path}")
+    try:
+        return NegativeDataset.model_validate_json(
+            dataset_path.read_text(encoding="utf-8")
+        )
+    except (ValidationError, ValueError) as exc:
+        raise DatasetError(
+            f"{dataset_path.name}: invalid negative-query dataset: {exc}"
+        ) from exc
+
+
+def load_planner(path: Path | str | None = None) -> list[PlannerScenario]:
+    return _load_jsonl(
+        Path(path) if path is not None else PLANNER_PATH,
+        PlannerScenario,
+        PLANNER_VERSION,
+    )
+
+
+def load_reports(path: Path | str | None = None) -> list[ReportCase]:
+    return _load_jsonl(
+        Path(path) if path is not None else REPORTS_PATH,
+        ReportCase,
+        REPORTS_VERSION,
+    )
+
+
 def dataset_counts() -> dict[str, int]:
     return {
         "incidents": len(load_incidents()),
         "diagnostics": len(load_diagnostics()),
         "retrieval": len(load_retrieval().queries),
+        "retrieval_negatives": len(load_retrieval_negatives().queries),
+        "planner": len(load_planner()),
+        "reports": len(load_reports()),
     }

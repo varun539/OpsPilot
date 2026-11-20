@@ -83,7 +83,10 @@ export interface InvestigationReport {
   provider?: string;
   model?: string;
   generation_status?: string;
+  valid?: boolean;
   citation_valid?: boolean;
+  errors?: string[];
+  validation_errors?: string[];
   retrieval_metadata?: Record<string, unknown> | null;
   [key: string]: unknown;
 }

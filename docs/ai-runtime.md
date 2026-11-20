@@ -43,7 +43,7 @@ PyTorch, sentence-transformers or ChromaDB.
 | `OPSPILOT_LLM_MODEL` | none | **Required in live mode.** An explicitly chosen free-tier model ID |
 | `OPSPILOT_LLM_API_KEY` | none | Optional neutral key; takes precedence over the provider variable |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` / `OPENROUTER_API_KEY` | none | Provider-specific server-side keys |
-| `OPSPILOT_LLM_TIMEOUT` | `30` | Request timeout in seconds; max `120` |
+| `OPSPILOT_LLM_TIMEOUT` | `30` | Per-request timeout in seconds, applied to planner and report calls; max `120` |
 | `OPSPILOT_LLM_MAX_OUTPUT_TOKENS` | `1200` | Hard output bound; max `4096` |
 | `OPSPILOT_LLM_BASE_URL` | provider default | Only for `groq` / `openrouter`; HTTPS only |
 

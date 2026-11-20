@@ -151,6 +151,25 @@ def test_timeout_and_output_bounds() -> None:
         LLMConfig(max_output_tokens=5000)
 
 
+def test_invalid_timeout_env_values_are_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPSPILOT_LLM_TIMEOUT", "abc")
+    with pytest.raises(ValueError, match="invalid number for OPSPILOT_LLM_TIMEOUT"):
+        LLMConfig.from_env()
+
+    monkeypatch.setenv("OPSPILOT_LLM_TIMEOUT", "0")
+    with pytest.raises(ValueError, match="OPSPILOT_LLM_TIMEOUT"):
+        LLMConfig.from_env()
+
+    monkeypatch.setenv("OPSPILOT_LLM_TIMEOUT", "500")
+    with pytest.raises(ValueError, match="OPSPILOT_LLM_TIMEOUT"):
+        LLMConfig.from_env()
+
+    monkeypatch.setenv("OPSPILOT_LLM_TIMEOUT", "90")
+    assert LLMConfig.from_env().timeout == 90.0
+
+
 def test_api_key_is_not_in_repr() -> None:
     config = LLMConfig(provider="gemini", api_key="super-secret", model="m")
     assert "super-secret" not in repr(config)

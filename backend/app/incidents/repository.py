@@ -44,6 +44,13 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"Object of type {type(value).__name__!r} is not JSON serializable")
 
 
+def _sql_bool(value: Any) -> int | None:
+    """SQLite has no boolean type; store 0/1 and preserve NULL as unknown."""
+    if value is None:
+        return None
+    return 1 if bool(value) else 0
+
+
 def _json_dumps(value: Any) -> str:
     return json.dumps(value, default=_json_default, sort_keys=True)
 
@@ -375,6 +382,9 @@ class IncidentRepository:
             "thread_id": data.get("thread_id"),
             "workflow_status": data.get("workflow_status"),
             "last_error": data.get("last_error"),
+            "planner_used": data.get("planner_used"),
+            "planner_status": data.get("planner_status"),
+            "planner_error": data.get("planner_error"),
             "started_at": data.get("started_at", now),
             "completed_at": data.get("completed_at"),
             "created_at": now,
@@ -387,8 +397,9 @@ class IncidentRepository:
                     INSERT INTO investigations (
                         id, incident_id, investigation_number, status, summary,
                         suspected_root_cause, report, thread_id, workflow_status,
-                        last_error, started_at, completed_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        last_error, planner_used, planner_status, planner_error,
+                        started_at, completed_at, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record["id"],
@@ -401,6 +412,9 @@ class IncidentRepository:
                         record["thread_id"],
                         record["workflow_status"],
                         record["last_error"],
+                        _sql_bool(record["planner_used"]),
+                        record["planner_status"],
+                        record["planner_error"],
                         record["started_at"],
                         record["completed_at"],
                         record["created_at"],
@@ -507,10 +521,15 @@ class IncidentRepository:
             "thread_id",
             "workflow_status",
             "last_error",
+            "planner_used",
+            "planner_status",
+            "planner_error",
             "started_at",
             "completed_at",
         }
         fields = {k: v for k, v in changes.items() if k in allowed}
+        if "planner_used" in fields:
+            fields["planner_used"] = _sql_bool(fields["planner_used"])
         if "report" in fields and fields["report"] is not None:
             fields["report"] = _json_dumps(fields["report"])
         if not fields:
@@ -786,6 +805,11 @@ class IncidentRepository:
         data.setdefault("thread_id", None)
         data.setdefault("workflow_status", None)
         data.setdefault("last_error", None)
+        data.setdefault("planner_used", None)
+        data.setdefault("planner_status", None)
+        data.setdefault("planner_error", None)
+        if data["planner_used"] is not None:
+            data["planner_used"] = bool(data["planner_used"])
         return Investigation(**data)
 
     def _evidence_from_row(self, row: Any) -> Evidence:

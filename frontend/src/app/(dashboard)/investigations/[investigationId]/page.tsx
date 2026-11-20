@@ -6,7 +6,11 @@ import { AlertTriangle, ArrowLeft, RefreshCw, ShieldCheck } from "lucide-react";
 
 import { useAuth } from "@/components/layout/auth-provider";
 import { EvidenceViewer } from "@/components/investigations/evidence-viewer";
-import { InvestigationReportView } from "@/components/investigations/investigation-report";
+import {
+  InvestigationReportView,
+  reportGenerationState,
+} from "@/components/investigations/investigation-report";
+import { PlannerStatusNotice } from "@/components/investigations/planner-status";
 import { ApprovalStatusBadge, IncidentStatusBadge, WorkflowStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/card";
@@ -74,6 +78,7 @@ export default function InvestigationDetailPage({
   const { investigation, evidence, incident, approval } = bundle.data;
   const workflowStatus = investigation.workflow_status ?? investigation.status;
   const awaitingApproval = workflowStatus === "awaiting_approval" || workflowStatus === "resume_failed";
+  const reportState = reportGenerationState(investigation.report ?? null);
 
   return (
     <div className="space-y-4">
@@ -151,6 +156,12 @@ export default function InvestigationDetailPage({
             </p>
           </div>
           <div>
+            <p className="text-[11px] uppercase tracking-wide text-muted">Planner</p>
+            <p className="mt-1 text-foreground">
+              {investigation.planner_status ?? "Not recorded"}
+            </p>
+          </div>
+          <div>
             <p className="text-[11px] uppercase tracking-wide text-muted">Investigation ID</p>
             <p className="mt-1 truncate font-mono text-[11px] text-muted">{investigation.id}</p>
           </div>
@@ -164,10 +175,30 @@ export default function InvestigationDetailPage({
         </div>
       ) : null}
 
-      {awaitingApproval ? (
+      <PlannerStatusNotice
+        status={investigation.planner_status}
+        error={investigation.planner_error}
+      />
+
+      {awaitingApproval && reportState === "failed" ? (
+        <div
+          role="alert"
+          className="rounded-md border border-[#5f2229] bg-[#2a1114] px-3 py-2 text-xs text-[#fca5a5]"
+        >
+          <strong className="font-medium">Report generation failed.</strong> This investigation cannot
+          be approved to completion. Review the errors and collected evidence, then reject it or start
+          a new investigation.
+        </div>
+      ) : awaitingApproval && reportState === "insufficient_evidence" ? (
         <div className="rounded-md border border-[#54411b] bg-[#251f10] px-3 py-2 text-xs text-[#fcd34d]">
-          This workflow is paused for human approval. Approving an investigation does not resolve the
-          underlying incident or confirm the suspected root cause.
+          This workflow is paused for human approval. The report contains insufficient evidence rather
+          than a provider failure, so it may still be reviewed. Approval does not resolve the underlying
+          incident or confirm the suspected root cause.
+        </div>
+      ) : awaitingApproval ? (
+        <div className="rounded-md border border-[#1c4633] bg-[#0e2419] px-3 py-2 text-xs text-[#bbf7d0]">
+          The report was generated and its citations were validated. It is ready for human review;
+          approval does not resolve the underlying incident or confirm the suspected root cause.
         </div>
       ) : null}
 

@@ -90,6 +90,7 @@ def _serialize_report(report: Any) -> Any:
                 "model",
                 "usage",
                 "generation_status",
+                "valid",
                 "citation_valid",
                 "validation_errors",
             ):

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FileText, ShieldQuestion } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Info, ShieldQuestion } from "lucide-react";
 
 import { SeverityBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -21,8 +21,13 @@ function asReport(value: Record<string, unknown> | null): InvestigationReport | 
       model: report.model ?? (value.model as string | undefined),
       generation_status:
         report.generation_status ?? (value.generation_status as string | undefined),
+      valid: report.valid ?? (value.valid as boolean | undefined),
       citation_valid:
         report.citation_valid ?? (value.citation_valid as boolean | undefined),
+      validation_errors:
+        report.validation_errors ??
+        (value.validation_errors as string[] | undefined) ??
+        (value.errors as string[] | undefined),
       retrieval_metadata:
         report.retrieval_metadata ??
         (value.retrieval_metadata as Record<string, unknown> | null | undefined),
@@ -32,6 +37,37 @@ function asReport(value: Record<string, unknown> | null): InvestigationReport | 
     };
   }
   return value as InvestigationReport;
+}
+
+export type ReportGenerationState = "valid" | "insufficient_evidence" | "failed";
+
+/**
+ * Classify a persisted report envelope without guessing: the backend records
+ * `generation_status` and `valid` alongside the report, and older records
+ * without those fields count as valid.
+ */
+export function reportGenerationState(
+  value: Record<string, unknown> | null,
+): ReportGenerationState {
+  if (!value) return "valid";
+  const nested =
+    value.report && typeof value.report === "object" && !Array.isArray(value.report)
+      ? (value.report as Record<string, unknown>)
+      : null;
+  const status = String(nested?.generation_status ?? value.generation_status ?? "");
+  const valid = nested?.valid ?? value.valid;
+  const citationValid = nested?.citation_valid ?? value.citation_valid;
+
+  if (
+    status === "provider_error" ||
+    status === "citation_validation_failed" ||
+    valid === false ||
+    citationValid === false
+  ) {
+    return "failed";
+  }
+  if (status === "insufficient_evidence") return "insufficient_evidence";
+  return "valid";
 }
 
 function Section({
@@ -66,6 +102,61 @@ export function InvestigationReportView({
   severity?: string;
 }) {
   const parsed = asReport(report);
+  const generationState = reportGenerationState(report);
+
+  if (generationState === "failed") {
+    const errors = parsed?.validation_errors ?? parsed?.errors ?? [];
+    return (
+      <Card>
+        <CardHeader
+          title="Report generation failed"
+          description="No validated AI report is available for this investigation"
+        />
+        <CardBody className="space-y-3">
+          <p
+            role="alert"
+            className="flex items-start gap-2 rounded border border-[#5f2229] bg-[#2a1114] px-3 py-2 text-xs text-[#fca5a5]"
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              The AI provider did not produce a usable report, so there is no assessment to review.
+              Nothing below this notice is presented as a genuine AI conclusion.
+            </span>
+          </p>
+          <dl className="grid gap-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-muted">Generation status</dt>
+              <dd className="mt-0.5 font-mono text-[11px] text-[#fca5a5]">
+                {parsed?.generation_status ?? "provider_error"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-muted">Evidence status</dt>
+              <dd className="mt-0.5 text-foreground">
+                {parsed?.evidence_status ? titleCase(parsed.evidence_status) : "Unknown"}
+              </dd>
+            </div>
+          </dl>
+          {errors.length > 0 ? (
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted">Sanitized error detail</p>
+              <ul className="mt-1 list-inside list-disc space-y-1 text-[11px] text-[#c3d0e3]">
+                {errors.map((error, index) => (
+                  <li key={`${error}-${index}`} className="break-words font-mono">
+                    {error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <p className="text-[11px] text-muted">
+            Evidence collected before the failure remains available in the Evidence tab. Reviewing or
+            rejecting this investigation does not resolve the incident.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
 
   if (!parsed && !summary) {
     return (
@@ -86,6 +177,20 @@ export function InvestigationReportView({
 
   return (
     <div className="space-y-4">
+      {generationState === "insufficient_evidence" ? (
+        <p
+          role="note"
+          className="flex items-start gap-2 rounded border border-[#54411b] bg-[#251f10] px-3 py-2 text-xs text-[#fcd34d]"
+        >
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            <strong className="font-medium">Insufficient evidence:</strong> retrieval did not return
+            enough knowledge-base evidence to support conclusions. This is not a provider failure;
+            the report intentionally contains no grounded root cause.
+          </span>
+        </p>
+      ) : null}
+
       <Card>
         <CardHeader
           title="Executive summary"

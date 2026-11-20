@@ -29,6 +29,8 @@ class InvestigationState(TypedDict, total=False):
     error_details: list[str]
     planner_used: bool
     fallback_used: bool
+    planner_error: str
+    planner_status: str
     missing_information: list[str]
     plan_rationale: str
     max_steps: int
@@ -56,6 +58,8 @@ DEFAULT_STATE: dict[str, Any] = {
     "error_details": [],
     "planner_used": False,
     "fallback_used": False,
+    "planner_error": "",
+    "planner_status": "",
     "missing_information": [],
     "plan_rationale": "",
     "max_steps": 25,
