@@ -23,7 +23,7 @@ const schemaPath = join(frontendRoot, "openapi.json");
 let python = process.env.OPSPILOT_PYTHON;
 if (!python) {
   try {
-    python = execFileSync("which python3", {
+    python = execFileSync("which", ["python3"], {
       encoding: "utf8",
       cwd: projectRoot,
     }).trim();
@@ -32,7 +32,7 @@ if (!python) {
   }
   if (!python) {
     try {
-      python = execFileSync("which python", {
+      python = execFileSync("which", ["python"], {
         encoding: "utf8",
         cwd: projectRoot,
       }).trim();
@@ -60,16 +60,18 @@ try {
   });
 
   // Generate TypeScript types using openapi-typescript via npx.
-  // Use execFileSync with shell: true to resolve npx properly.
-  const npxResult = execFileSync("cmd.exe", [
-    "/c",
-    "npx openapi-typescript " + schemaPath + " -o " + temporaryGenerated,
+  // Pass arguments directly so the check works on Linux and Windows.
+  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  execFileSync(npx, [
+    "openapi-typescript",
+    schemaPath,
+    "-o",
+    temporaryGenerated,
   ], {
     cwd: frontendRoot,
     encoding: "utf8",
     stdio: "pipe",
-    shell: true,
-  }).trim();
+  });
 
   // Normalize line endings before comparing. Git's core.autocrlf checks out
   // text files with CRLF on Windows while openapi-typescript writes LF, so a
