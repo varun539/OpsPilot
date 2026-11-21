@@ -49,9 +49,9 @@ def test_redact_text_handles_long_single_line_without_blowup():
 def test_sqlite_db_file_permissions_restricted_on_posix(tmp_path):
     if os.name != "posix":
         pytest.skip("POSIX permission bits not enforced on this platform")
-    from backend.app.incidents.database import IncidentDatabase
+    from backend.app.incidents.database import ApplicationDatabase
 
-    db = IncidentDatabase(db_path=str(tmp_path / "app.sqlite"))
+    db = ApplicationDatabase(db_path=str(tmp_path / "app.sqlite"))
     db.initialize()
     mode = stat.S_IMODE(os.stat(str(tmp_path / "app.sqlite")).st_mode)
     assert mode & 0o077 == 0, f"database file is group/world accessible: {oct(mode)}"
