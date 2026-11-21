@@ -39,10 +39,9 @@ def _as_dict(value: Any) -> Any:
         try:
             return value.model_dump(mode="json")
         except Exception:
-            try:
-                return value.model_dump()
-            except Exception:
-                pass
+            # Avoid Python-mode serialization, which can emit warnings and
+            # produce non-JSON-serializable values.
+            return value
     return value
 
 
@@ -63,7 +62,11 @@ def build_tool_inputs(tool_name: str, state: dict[str, Any]) -> dict[str, Any] |
         status = request.get("http_status")
         if status is None:
             return None
-        kwargs: dict[str, Any] = {"status_code": int(status)}
+        try:
+            status_code = int(status)
+        except (TypeError, ValueError):
+            return None
+        kwargs: dict[str, Any] = {"status_code": status_code}
         if request.get("response_text") is not None:
             kwargs["response_text"] = request.get("response_text")
         if request.get("response_headers") is not None:
@@ -83,8 +86,10 @@ def build_tool_inputs(tool_name: str, state: dict[str, Any]) -> dict[str, Any] |
             return None
         return {"error_text": text}
     if tool_name == "incident_correlator":
+        # Events must be a list of event objects. A dict (or any other scalar)
+        # is not a valid event batch and must not be coerced downstream.
         events = request.get("events")
-        if not events:
+        if not isinstance(events, list) or not events:
             return None
         return {"events": events}
     return None

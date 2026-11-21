@@ -25,6 +25,11 @@ SENSITIVE_KEY_FRAGMENTS = (
     "auth",
     "authorization",
     "bearer",
+    "api-key",
+    "x-api-key",
+    "cookie",
+    "session",
+    "jwt",
     "dsn",
     "connection_string",
     "database_url",
@@ -45,8 +50,13 @@ _KV_RE = re.compile(
 # Bearer tokens
 _BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-+/=]{8,}")
 
-# URLs with embedded credentials
-_URL_CREDS_RE = re.compile(r"(?i)([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^/\s@]+)@")
+# URLs with embedded credentials. Every quantifier is bounded: an unbounded
+# scheme/authority match is quadratic on a long single-token line (a hostile log
+# line or stack trace), which is a denial-of-service vector, not just a style
+# issue.
+_URL_CREDS_RE = re.compile(
+    r"(?i)([a-z][a-z0-9+.\-]{0,31}://)([^/\s:@]{1,128}):([^/\s@]{1,256})@"
+)
 
 # Long hex/base64-ish tokens (>=20 chars) that are not ordinary words
 _LONG_TOKEN_RE = re.compile(r"\b[A-Za-z0-9_\-]{24,}\b")
@@ -82,7 +92,11 @@ def redact_text(text: str) -> str:
         text = "" if text is None else str(text)
 
     result = text
-    for match in list(_KV_RE.finditer(text)):
+    # Scheme credentials must be handled first. A generic key=value pass would
+    # match only the word "Bearer" as the value of "Authorization", redacting
+    # the scheme and orphaning the credential that follows it.
+    result = _BEARER_RE.sub("Bearer <redacted>", result)
+    for match in list(_KV_RE.finditer(result)):
         key = match.group("key")
         if not is_sensitive_key(key):
             continue
@@ -94,7 +108,6 @@ def redact_text(text: str) -> str:
             replacement = f"{key}: {quote}{_REDACTED}{quote}"
         result = result.replace(full, replacement, 1)
 
-    result = _BEARER_RE.sub("Bearer <redacted>", result)
     result = _URL_CREDS_RE.sub(r"\1<redacted>:<redacted>@", result)
     return result
 
@@ -104,6 +117,18 @@ def redact_mapping(mapping: Any) -> Any:
     if isinstance(mapping, dict):
         return {k: redact_value(k, v) for k, v in mapping.items()}
     return mapping
+
+
+def neutralize_prompt_delimiters(text: str) -> str:
+    """Escape angle brackets in untrusted text.
+
+    Prompts fence untrusted values with XML-like tags. Escaping ``<`` and ``>``
+    guarantees that no untrusted value can forge a closing fence and start a
+    new, seemingly trusted section.
+    """
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
+    return text.replace("<", "&lt;").replace(">", "&gt;")
 
 
 def truncate_text(text: str, limit: int) -> tuple[str, bool]:

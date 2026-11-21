@@ -122,6 +122,21 @@ CREATE INDEX IF NOT EXISTS idx_incident_events_incident_id ON incident_events(in
 """
 
 
+def restrict_file_permissions(path: Path) -> None:
+    """Best-effort 0600 for a persistent database file.
+
+    SQLite creates files with the process umask, which commonly leaves incident
+    records and evidence readable by other local users. Tightening the file is
+    safe and meaningful on POSIX; Windows ACLs are left to the deployment.
+    """
+    if os.name != "posix":
+        return
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def app_db_path() -> str:
     raw = os.getenv("OPSPILOT_APP_DB", "").strip()
     if raw:
@@ -152,6 +167,8 @@ class ApplicationDatabase:
     def initialize(self) -> None:
         conn = self.connect()
         try:
+            if not self._is_memory():
+                restrict_file_permissions(Path(self.db_path))
             conn.executescript(SCHEMA)
             # Additive migrations for Phase 11.
             columns = {

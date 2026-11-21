@@ -20,6 +20,10 @@ htmlcov/
 !.env.example
 !.env.production.example
 
+# Private keys and certificates
+*.pem
+*.key
+
 # ChromaDB runtime data
 chroma/
 .chroma/

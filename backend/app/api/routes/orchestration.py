@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 
 from backend.app.api.dependencies import require_operator, require_viewer
+from backend.app.api.rate_limit import rate_limit
 from backend.app.api.schemas import ErrorResponse
 from backend.app.incidents.models import Approval
 from backend.app.orchestration.dependencies import get_orchestration_service
@@ -41,6 +42,9 @@ def start_investigation(
     payload: InvestigationStartRequest | None = None,
     service: InvestigationOrchestrationService = Depends(get_orchestration_service),
     principal: Any = Depends(require_operator),
+    # Expensive endpoint: bounded per principal. Declared after the role check
+    # so an unauthorized caller still receives 403, never 429.
+    _rate: None = Depends(rate_limit("investigation_start")),
 ) -> InvestigationStartResponse:
     result = service.start_investigation(
         incident_id, payload or InvestigationStartRequest(), principal
@@ -69,6 +73,8 @@ def decide_investigation(
     investigation_id: str = Path(..., min_length=1),
     service: InvestigationOrchestrationService = Depends(get_orchestration_service),
     principal: Any = Depends(require_operator),
+    # Approval and rejection are sensitive state transitions; bound them too.
+    _rate: None = Depends(rate_limit("investigation_approval")),
 ) -> InvestigationApprovalResponse:
     return service.approve_investigation(
         investigation_id,

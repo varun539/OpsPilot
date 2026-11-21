@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -16,6 +15,16 @@ from backend.app.ai import (
 )
 from backend.app.api.dependencies import get_incident_service  # noqa: F401
 from backend.app.api.exceptions import register_exception_handlers
+from backend.app.api.middleware import (
+    BodySizeLimitMiddleware,
+    apply_security_headers,
+    configured_max_request_bytes,
+    sanitize_request_id,
+)
+from backend.app.api.rate_limit import (
+    env_rate_limit_requests,
+    env_rate_limit_window_seconds,
+)
 from backend.app.api.router import api_router, root_router
 from backend.app.auth.config import AuthSettings, validate_runtime_configuration
 from backend.app.auth.dependencies import get_current_principal  # noqa: F401
@@ -26,10 +35,13 @@ from backend.app.orchestration.service import InvestigationOrchestrationService
 def _request_id_middleware(app: FastAPI) -> None:
     @app.middleware("http")
     async def add_request_id(request: Request, call_next):  # type: ignore[override]
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        # Client-supplied values are reflected into a response header and error
+        # envelopes, so only a conservative identifier shape is echoed.
+        request_id = sanitize_request_id(request.headers.get("X-Request-ID"))
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        apply_security_headers(response.headers, path=request.url.path)
         return response
 
 
@@ -145,6 +157,9 @@ def create_app(
     rag_service: Any = None,
     ai_runtime: Any = None,
     orchestration_service: InvestigationOrchestrationService | None = None,
+    rate_limit_requests: int | None = None,
+    rate_limit_window_seconds: float | None = None,
+    max_request_bytes: int | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="OpsPilot API",
@@ -210,6 +225,31 @@ def create_app(
     ):
         raise RuntimeError("development authentication cannot be enabled on a public bind address")
     app.state.auth_settings = auth_settings
+
+    # Request body ceiling. Added before CORS so CORS stays the outermost
+    # middleware and still decorates 413 responses with the right headers.
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=(
+            configured_max_request_bytes()
+            if max_request_bytes is None
+            else int(max_request_bytes)
+        ),
+    )
+
+    app.state.rate_limit_settings = {
+        "limit": (
+            env_rate_limit_requests()
+            if rate_limit_requests is None
+            else max(0, int(rate_limit_requests))
+        ),
+        "window_seconds": (
+            env_rate_limit_window_seconds()
+            if rate_limit_window_seconds is None
+            else max(0.001, float(rate_limit_window_seconds))
+        ),
+    }
+    app.state.rate_limiters = {}
 
     # CORS: conservative defaults.
     origins = auth_settings.cors_origins
