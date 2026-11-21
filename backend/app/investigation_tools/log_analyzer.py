@@ -18,6 +18,12 @@ from .sanitization import redact_text, split_lines_bounded, truncate_text
 
 TOOL_NAME = "log_analyzer"
 
+# A single hostile line must not be echoed back at input size. Evidence and
+# extracted identifiers are bounded independently of the overall input ceiling.
+_MAX_EVIDENCE_CHARS = 500
+_MAX_IDENTIFIER_CHARS = 128
+_MAX_EXCEPTION_CHARS = 200
+
 # Level tokens are only accepted near the start of a line (or in a JSON field) so
 # that the word "error" inside a message does not change the entry's level.
 _LEVEL_RE = re.compile(
@@ -150,10 +156,10 @@ def _extract_logger(line: str, parsed_json: dict[str, Any] | None) -> str | None
         for key in _LOGGER_JSON_KEYS:
             value = parsed_json.get(key)
             if isinstance(value, str) and value.strip():
-                return value.strip()
+                return value.strip()[:_MAX_IDENTIFIER_CHARS]
     match = _LOGGER_AFTER_LEVEL_RE.search(line)
     if match:
-        candidate = match.group(1)
+        candidate = match.group(1)[:_MAX_IDENTIFIER_CHARS]
         if not candidate.isdigit() and candidate.upper() not in _LEVEL_ALIASES:
             return candidate
     return None
@@ -200,15 +206,17 @@ def _extract_correlation_ids(line: str, parsed_json: dict[str, Any] | None) -> l
             if any(fragment in str(key).lower() for fragment in _CORR_JSON_FRAGMENTS):
                 if value is not None and str(value).strip():
                     ids.append(str(value))
-    return sorted(set(ids))
+    return sorted({item[:_MAX_IDENTIFIER_CHARS] for item in ids})
 
 
 def _extract_exceptions(line: str, parsed_json: dict[str, Any] | None) -> list[str]:
-    names = _EXCEPTION_RE.findall(line)
+    names = [name[:_MAX_EXCEPTION_CHARS] for name in _EXCEPTION_RE.findall(line)]
     if parsed_json:
         for value in parsed_json.values():
             if isinstance(value, str):
-                names.extend(_EXCEPTION_RE.findall(value))
+                names.extend(
+                    name[:_MAX_EXCEPTION_CHARS] for name in _EXCEPTION_RE.findall(value)
+                )
     return sorted(set(names))
 
 
@@ -300,11 +308,15 @@ def analyze_logs(log_text: str, **options: Any) -> DiagnosticResult:
     logger_names = sorted({entry["logger"] for entry in entries if entry["logger"]})
 
     def evidence_for(level: str, limit: int) -> list[str]:
-        return [
-            redact_text(entry["raw"]) if redact else entry["raw"]
-            for entry in entries
-            if entry["level"] == level
-        ][:limit]
+        lines: list[str] = []
+        for entry in entries:
+            if entry["level"] != level:
+                continue
+            text = redact_text(entry["raw"]) if redact else entry["raw"]
+            lines.append(text[:_MAX_EVIDENCE_CHARS])
+            if len(lines) >= limit:
+                break
+        return lines
 
     findings: list[DiagnosticFinding] = []
     critical_count = level_counts.get("CRITICAL", 0)

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import uuid
-
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.app.api.middleware import sanitize_request_id
 from backend.app.auth.exceptions import AuthConfigurationError, InvalidTokenError
 from backend.app.incidents.exceptions import (
     DuplicateRecordError,
@@ -30,15 +29,22 @@ from backend.app.orchestration.exceptions import (
 def _request_id(request: Request) -> str:
     existing = getattr(request.state, "request_id", None)
     if existing:
-        return str(existing)
-    value = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        return sanitize_request_id(existing)
+    value = sanitize_request_id(request.headers.get("X-Request-ID"))
     request.state.request_id = value
     return value
 
 
-def _error_response(status_code: int, code: str, message: str, request_id: str) -> JSONResponse:
+def _error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    request_id: str,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
+        headers=headers,
         content={
             "error": {
                 "code": code,
@@ -60,7 +66,12 @@ def register_exception_handlers(app: FastAPI) -> None:
             code = "forbidden"
         elif exc.status_code == 404:
             code = "not_found"
-        return _error_response(exc.status_code, code, str(exc.detail), request_id)
+        elif exc.status_code == 429:
+            code = "rate_limited"
+        # Preserve protocol headers such as Retry-After for 429 responses.
+        return _error_response(
+            exc.status_code, code, str(exc.detail), request_id, headers=exc.headers
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(

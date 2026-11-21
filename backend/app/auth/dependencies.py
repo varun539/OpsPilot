@@ -56,7 +56,13 @@ def get_current_principal(
             detail="missing bearer token",
         )
 
-    verifier = JWTVerifier(settings)
+    # Reuse one verifier per app so the JWKS document and signing keys stay
+    # cached. Building a verifier per request would fetch JWKS on every call and
+    # defeat the rotation cache entirely.
+    verifier = getattr(request.app.state, "jwt_verifier", None)
+    if verifier is None or verifier.settings is not settings:
+        verifier = JWTVerifier(settings)
+        request.app.state.jwt_verifier = verifier
     try:
         return verifier.verify(token)
     except (InvalidTokenError, AuthConfigurationError):

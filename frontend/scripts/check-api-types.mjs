@@ -71,6 +71,7 @@ try {
     cwd: frontendRoot,
     encoding: "utf8",
     stdio: "pipe",
+    shell: process.platform === "win32",
   });
 
   // Normalize line endings before comparing. Git's core.autocrlf checks out

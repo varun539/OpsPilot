@@ -10,6 +10,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from backend.app.incidents.database import restrict_file_permissions
+
 # Restrict checkpoint deserialization to LangGraph's safe built-in types.
 STRICT_SERDE = JsonPlusSerializer(allowed_msgpack_modules=None)
 
@@ -39,6 +41,9 @@ class SQLiteCheckpointer:
         # creates its own default serializer.
         self.saver.serde = STRICT_SERDE
         self.saver.jsonplus_serde = STRICT_SERDE
+        # Checkpoints can contain incident text and diagnostic evidence; keep
+        # the database readable only by the service account.
+        restrict_file_permissions(self.db_path)
         return self.saver
 
     def close(self) -> None:
