@@ -294,4 +294,3 @@ def test_heldout_dataset_structure() -> None:
             f"{o['heldout_docs']} vs {o['eval_docs']}"
         )
         assert o["heldout_docs"], f"No relevant doc labels for {o['heldout_id']}"
-

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-/** 
- * Verify that frontend/src/lib/api/generated.ts matches the FastAPI OpenAPI schema. 
- * 
- * The schema is exported from the running application code, then TypeScript 
- * types are generated into a temporary file and compared byte-for-byte with the 
- * committed generated file. A mismatch fails the check and prints how to fix it. 
- */ 
+/**
+ * Verify that frontend/src/lib/api/generated.ts matches the FastAPI OpenAPI schema.
+ *
+ * The schema is exported from the running application code, then TypeScript
+ * types are generated into a temporary file and compared byte-for-byte with the
+ * committed generated file. A mismatch fails the check and prints how to fix it.
+ */
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, mkdtempSync } from "node:fs";
