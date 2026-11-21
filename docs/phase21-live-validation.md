@@ -545,3 +545,35 @@ Align the planner prompt/schema by enumerating the actual tool IDs (or constrain
 investigation read model so the UI can show it, and only then run another single
 live investigation to confirm the planner succeeds without falling back. Keep the
 current 2-request bound and opt-in live testing.
+
+## 21. Phase 23 follow-up (2026-11-20)
+
+Phase 23 did **not** make another live Gemini request. The Phase 21.2 run above
+remains the only genuine report sample, and its planner invalid selection remains
+the only live planner observation.
+
+Two limitations from §19 changed:
+
+- **Planner degradation is now exposed (limitation #2 resolved).** The
+  investigation read model carries `planner_used`, `planner_status` and a
+  redacted `planner_error`, so the UI can distinguish a valid plan from a
+  timeout, an invalid tool selection or another provider failure. Unknown tools
+  are still rejected before execution, and the fallback remains deterministic.
+  The Phase 21.2 observation now maps to
+  `planner_status="fallback_invalid_selection"`, not an opaque error string.
+- **A bounded live planner evaluation now exists, but has not been run.** The
+  `live-planner` suite is excluded from `--suite all` and requires both
+  `--live-planner-opt-in` and `OPSPILOT_LIVE_PLANNER_EVAL=1`; it makes at most 5
+  sequential planner calls, with no retries, no tool execution and no report
+  generation. Phase 23 left it disabled because free-tier/billing status could
+  not be established. Measured status: `skipped`, `requests_made=0`.
+
+**Planner prompt alignment (limitation #1) is still open.** The system prompt
+still names a "fixed allow-list" without enumerating the six tool IDs, so the
+Phase 21.2 cause of the invalid selection has not been removed. Re-running the
+live planner evaluation should wait until the prompt/schema is aligned and
+billing is confirmed.
+
+See `docs/phase23-reliability-and-intelligence.md` §5 and §7 for the status
+vocabulary, redaction guarantees, migration behaviour and the live-evaluation
+safeguards.

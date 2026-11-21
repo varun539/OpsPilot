@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "description": "Held-out retrieval evaluation split for OpsPilot knowledge base (offline). PARTIALLY OVERLAPS retrieval_eval.json: hq16b, hq17, and hq18 duplicate three development queries (q01, q03, q04) with identical relevant-document labels. The remaining 16 queries are unanswerable and independent. Not an independently held-out set.",
+  "queries": [
+    {
+      "id": "hq01",
+      "query": "Kubernetes ingress controller 504 timeout on health check endpoint",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq02",
+      "query": "Django ORM query performance degradation under concurrent load",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq03",
+      "query": "Redis SSL connection failed due to certificate hostname mismatch",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq04",
+      "query": "Terraform apply failed: resource limits exceeded on cloud provider",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq05",
+      "query": "Node.js event loop blocked by synchronous file I/O in request handler",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq06",
+      "query": "Go microservice panic: nil pointer dereference in handler middleware",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq07",
+      "query": "Azure Service Bus message delivery failure during peak traffic",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq08",
+      "query": "Kafka consumer lag growth with unknown partition assignment",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq09",
+      "query": "Spring Boot application fails to start due to missing datasource configuration",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq10",
+      "query": "ELB health check returning 502 from backend service misconfiguration",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq11",
+      "query": "Application memory leak from unclosed database connections in worker pool",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq12",
+      "query": "Circuit breaker tripping incorrectly during temporary network blip",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq13",
+      "query": "Grafana dashboard showing stale metrics from prometheus scrape failure",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq14",
+      "query": "Istio sidecar proxy injection causing port conflict in pod",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq15",
+      "query": "ELK stack index corruption causing search failures",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq16",
+      "query": "Prometheus rule evaluation error: division by zero in custom aggregation",
+      "relevant_doc_ids": []
+    },
+    {
+      "id": "hq16b",
+      "query": "FastAPI endpoint returns HTTP 500 after unhandled exception",
+      "relevant_doc_ids": ["KB-001"]
+    },
+    {
+      "id": "hq17",
+      "query": "Supabase PostgreSQL connection refused due to IPv6 egress",
+      "relevant_doc_ids": ["KB-003"]
+    },
+    {
+      "id": "hq18",
+      "query": "JWT signature verification failed and API returns 401 Unauthorized",
+      "relevant_doc_ids": ["KB-004"]
+    }
+  ]
+}

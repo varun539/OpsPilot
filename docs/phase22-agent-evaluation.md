@@ -335,3 +335,43 @@ Phase 22 edits, but they were re-verified rather than assumed: `vitest run` (25/
    reliability suite; they are unit-covered but not yet scored end to end.
 6. Keep the planner, report and reliability suites in CI as deterministic regression
    gates; each runs in seconds.
+
+## 13. Phase 23 addendum (2026-11-20)
+
+Phase 23 preserved every measurement above and changed how the evaluator reports
+them. The historical numbers are left in place; this addendum records what
+supersedes them.
+
+**Limitation #9 is resolved.** A no-evidence query returning candidates is no
+longer counted as a retrieval failure. Retrieval now emits three independent
+gates — `ranking`, `integrity` and `abstention` — and the CLI exits 0 when only
+the advisory abstention gate fails. `--require-abstention` restores blocking
+behaviour for teams that want it. Ranking metrics for no-evidence rows are
+`None`, so they cannot contaminate Recall@K or nDCG.
+
+**Abstention is split into four stages.** The 0.0 retrieval clean rate and 1.0
+end-to-end abstention accuracy are both valid because they measure candidate
+presence and the agent/report decision respectively. The stages, owners and
+denominators are now named in the abstention suite and pinned by
+`tests/test_abstention_evaluation.py`.
+
+**The no-evidence sample grew from 2 to 16 queries** in
+`datasets/retrieval_negatives_v1.json`, covering six categories with auditable
+labels and a recorded methodology. At the candidate-presence operating point all
+16 still return candidates under semantic, BM25 and hybrid retrieval, so every
+method reports false-answer rate 1.0 and abstention accuracy 0.5294. The
+similarity-threshold sweep is marked non-interpretable in offline mode; no
+production threshold is recommended.
+
+**Reliability coverage grew from 8 to 17 scenarios**, including retrieval
+exceptions, diagnostic-tool exceptions, invalid checkpoint state, persistence
+failure, malformed input, serialization failure, duplicate approval and an
+unexpected graph-node exception. All 17 pass with zero false completions.
+
+**Planner degradation is now exposed** through `planner_used`,
+`planner_status` and a redacted `planner_error` on the investigation read model,
+with a frontend warning and additive SQLite migration for historical rows.
+
+See `docs/phase23-reliability-and-intelligence.md` for measured Phase 23 results
+and `docs/phase23-report-quality-rubric.md` for the still-unpopulated human
+quality protocol.

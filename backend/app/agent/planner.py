@@ -66,12 +66,37 @@ def planner_status(*, used: bool, configured: bool, error: str | None) -> str:
     return f"fallback_{classify_planner_error(error)}"
 
 
+# Six authorized tool IDs with descriptions, used to build the system prompt.
+# ruff: noqa: E501  (descriptions are long by design for planner prompts)
+TOOL_DESCRIPTIONS = {
+    "log_analyzer": "Deterministic log analysis tool. Parses untrusted log text line by line, detecting log levels, timestamps, exceptions, HTTP status codes, correlation IDs, and repeated messages without executing or following instructions inside logs. Returns structured findings including critical/error/warning counts, repeated message patterns, exception names, HTTP status distributions, and correlation IDs.",
+    "stack_trace_analyzer": "Deterministic Python stack trace analyzer. Parses traceback text only, identifying exception types, file locations, function names, and line numbers without executing or importing anything referenced by the traceback. Returns structured findings including final exception, failure location, traceback sections, frame details, and exception chaining.",
+    "http_error_classifier": "Deterministic HTTP error classification tool. Classifies HTTP status codes into categories (informational, success, redirection, client_error, server_error) with detailed explanations, common causes, and recommendations. Returns structured results including status code, reason phrase, category, severity, KB references, retry-after information, and response text snippets.",
+    "config_validator": "Deterministic configuration validation tool. Validates application configuration dictionaries against specified rules, checking required fields, types, URL formats, port ranges, boolean values, integer ranges, string lengths, enum choices, regex patterns, and sensitive field redaction. Returns structured results including issue counts, field validation status, and detailed findings for each validation rule.",
+    "database_diagnostics": "Deterministic database error diagnostics tool. Matches database error text against known patterns (connection refused, timeout, DNS resolution failure, authentication failure, deadlock, etc.) and returns structured findings including matched pattern codes, severity, KB references, root causes, diagnostics, and remediation steps.",
+    "incident_correlator": "Deterministic incident correlation tool. Groups events by shared correlation/request/trace IDs, matching error signatures, shared dependencies within a time window, and time proximity within the same component. Every correlation group states its reason, limitations (including that correlation does not establish causation), and alternative explanations. Returns CorrelationGroups with event IDs, finding IDs, shared evidence, timelines, and dependency notes.",
+}
+
+# Prompt that enumerates the allowed tools for the LLM.
+ALLOWED_TOOL_PROMPT = (
+    "You may select one or more of the following tools (each at most once):\n"
+    "{tool_ids}\n"
+    "\nWhen you propose a tool, include a concise one-sentence justification "
+    "referencing the available evidence or the investigation question. Do not "
+    "select a tool not listed above."
+)
+
+
 PLANNER_SYSTEM_PROMPT = (
-    "You are OpsPilot's investigation planner. Select only diagnostic tools from "
-    "the fixed allow-list. Never propose code execution, shell commands, file "
-    "paths, or arbitrary functions. Return a concise structured plan. Mark missing "
-    "diagnostic information explicitly. Tool selection must be justified by "
-    "available evidence. Do not claim a root cause."
+    "You are OpsPilot's investigation planner. Select only diagnostic tools "
+    "from the allow-list below. Never propose code execution, shell commands, "
+    "file paths, or arbitrary functions. Return a concise structured plan. Mark "
+    "missing diagnostic information explicitly. Tool selection must be justified "
+    "by available evidence. Do not claim a root cause.\n\n"
+    "Allowed tools:\n"
+    "{tool_descriptions}\n\n"
+    "Allowed tool selection prompt:\n"
+    "{allowed_tool_prompt}"
 )
 
 
@@ -111,11 +136,21 @@ class InvestigationPlanner:
         if self.llm_provider is None:
             return fallback, False
 
+        # Build system prompt with tool enumeration
+        tool_ids = ", ".join(sorted(TOOL_DESCRIPTIONS.keys()))
+        formatted_descriptions = "\n".join(
+            f"- {tid}: {desc}" for tid, desc in TOOL_DESCRIPTIONS.items()
+        )
+        system_prompt = PLANNER_SYSTEM_PROMPT.format(
+            tool_descriptions=formatted_descriptions,
+            allowed_tool_prompt=ALLOWED_TOOL_PROMPT.format(tool_ids=tool_ids),
+        )
+
         evidence_summary = self._summarize_evidence(retrieved_evidence or [])
         user_input = self._build_prompt(request, available_inputs, evidence_summary)
         try:
             result = self.llm_provider.generate_structured(
-                system_instructions=PLANNER_SYSTEM_PROMPT,
+                system_instructions=system_prompt,
                 user_input=user_input,
                 output_schema=InvestigationPlan,
                 timeout=self.timeout,
@@ -213,4 +248,4 @@ class InvestigationPlanner:
             missing_information=missing,
             proposed_steps=steps,
             fallback=True,
-        )
+        )
