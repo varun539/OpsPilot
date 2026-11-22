@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
+from backend.app.auth.tenant import is_valid_tenant_id
+
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -19,6 +21,15 @@ def _list(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _is_valid_claim_path(value: object) -> bool:
+    """Claim names may be dotted paths, but never empty or padded segments."""
+    if not isinstance(value, str) or not value:
+        return False
+    if value != value.strip():
+        return False
+    return all(segment and segment == segment.strip() for segment in value.split("."))
 
 
 @dataclass
@@ -37,6 +48,15 @@ class AuthSettings:
     )
     roles_claim: str = field(
         default_factory=lambda: os.getenv("OPSPILOT_AUTH_ROLES_CLAIM", "roles")
+    )
+    # Dotted claim paths are supported by the shared claim extraction helper.
+    tenant_claim: str = field(
+        default_factory=lambda: os.getenv("OPSPILOT_AUTH_TENANT_CLAIM", "tenant_id")
+    )
+    # Development-only tenant identity. No default is invented: absent means the
+    # dev principal has no tenant and tenant-scoped access fails closed.
+    dev_tenant_id: str | None = field(
+        default_factory=lambda: os.getenv("OPSPILOT_DEV_TENANT_ID") or None
     )
     algorithms: list[str] = field(
         default_factory=lambda: (
@@ -105,6 +125,20 @@ class AuthSettings:
                 )
         elif self.dev_auth_enabled and not self.is_loopback_host():
             errors.append("development authentication requires a loopback OPSPILOT_HOST")
+
+        # A malformed development tenant id can never satisfy tenant-scoped
+        # access, so surface the misconfiguration at startup instead of at the
+        # first tenant-scoped request. Only the variable name is reported.
+        if self.dev_tenant_id is not None and not is_valid_tenant_id(self.dev_tenant_id):
+            errors.append("OPSPILOT_DEV_TENANT_ID must match ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+        # A malformed claim name silently yields no tenant, which would quietly
+        # turn tenant-scoped access into a permanent 403. Reject it at startup.
+        if not _is_valid_claim_path(self.tenant_claim):
+            errors.append(
+                "OPSPILOT_AUTH_TENANT_CLAIM must be a non-empty claim name or dotted path "
+                "without empty segments"
+            )
         return errors
 
 

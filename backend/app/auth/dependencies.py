@@ -7,7 +7,8 @@ from fastapi import Depends, HTTPException, Request, status
 from backend.app.auth.config import AuthSettings
 from backend.app.auth.exceptions import AuthConfigurationError, InvalidTokenError
 from backend.app.auth.jwt import JWTVerifier, _role_rank
-from backend.app.auth.models import Principal
+from backend.app.auth.models import Principal, TenantContext
+from backend.app.auth.tenant import is_valid_tenant_id
 
 
 def get_auth_settings(request: Request) -> AuthSettings:
@@ -22,12 +23,29 @@ def _is_dev_mode(settings: AuthSettings) -> bool:
     )
 
 
+def _dev_tenant_id(settings: AuthSettings) -> str | None:
+    """Server-configured development tenant, or None when unset/invalid.
+
+    No tenant is ever invented for development: an absent value leaves the dev
+    principal without tenant identity so tenant-scoped access fails closed.
+    """
+    tenant_id = settings.dev_tenant_id
+    if isinstance(tenant_id, str) and is_valid_tenant_id(tenant_id):
+        return tenant_id
+    return None
+
+
 def get_current_principal(
     request: Request,
     settings: AuthSettings = Depends(get_auth_settings),
 ) -> Principal:
     if _is_dev_mode(settings):
-        return Principal(subject="dev-user", roles=["admin"], scopes=[])
+        return Principal(
+            subject="dev-user",
+            roles=["admin"],
+            scopes=[],
+            tenant_id=_dev_tenant_id(settings),
+        )
 
     # Production (or non-enabled development) mode.
     if settings.auth_mode == "development":
@@ -70,6 +88,30 @@ def get_current_principal(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid or expired token",
         )
+
+
+def get_tenant_context(
+    principal: Principal = Depends(get_current_principal),
+) -> TenantContext:
+    """Return the verified tenant context or fail closed with HTTP 403.
+
+    Tenant identity is taken only from the authenticated principal, which in
+    turn comes from verified JWT claims or server-side development
+    configuration. Request headers, query parameters, bodies and paths are
+    never consulted, so a client cannot select its own tenant.
+    """
+    tenant_id = principal.tenant_id
+    if not isinstance(tenant_id, str) or not is_valid_tenant_id(tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="tenant context required",
+        )
+    return TenantContext(tenant_id=tenant_id, actor_subject=principal.subject)
+
+
+# Phase 26.1 exposes the tenant dependency for later route enforcement but does
+# not apply it to any existing API route.
+require_tenant = get_tenant_context
 
 
 def require_min_role(minimum: str):
