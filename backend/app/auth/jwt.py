@@ -11,6 +11,7 @@ from jwt import PyJWKClient
 from backend.app.auth.config import AuthSettings
 from backend.app.auth.exceptions import AuthConfigurationError, InvalidTokenError
 from backend.app.auth.models import Principal
+from backend.app.auth.tenant import tenant_id_from_claim
 
 logger = logging.getLogger("opspilot.auth")
 
@@ -137,6 +138,9 @@ class JWTVerifier:
         roles = normalize_roles(
             _get_claim(claims, self.settings.roles_claim), self.settings.roles_claim
         )
-        return Principal(subject=str(subject), roles=roles, scopes=scopes)
+        # Tenant identity is read exclusively from the verified claim set. A
+        # missing claim yields None; a malformed one rejects the token.
+        tenant_id = tenant_id_from_claim(_get_claim(claims, self.settings.tenant_claim))
+        return Principal(subject=str(subject), roles=roles, scopes=scopes, tenant_id=tenant_id)
 
     verify_token = verify
